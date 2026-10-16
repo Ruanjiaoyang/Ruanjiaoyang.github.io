@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">6 posts</span><span lang="zh">6 篇</span></span></summary>
+          <span class="series-count"><span lang="en">7 posts</span><span lang="zh">7 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Transformer Architecture Foundations: Every Component of the Original Paper</span><span lang="zh">Transformer 架构基础：原始论文的每个部件</span></h4>
@@ -486,6 +486,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">Residual connections were introduced as a gradient highway, but they also decide how information is aggregated across depth: every layer receives the unweighted sum of all earlier outputs. This post covers the classic view (identity path, the residual stream as a shared channel, the ensemble view), single-stream variants with scaling and gating (ReZero, LayerScale, Highway, DeepNorm), and the PreNorm dilution problem. It then presents a unified depth-mixing-matrix view and the two recent directions: multiple residual streams with learned mixing (Hyper-Connections and DeepSeek&#x27;s manifold-constrained mHC with doubly stochastic matrices), and Kimi&#x27;s Attention Residuals, which replace fixed accumulation with softmax attention over earlier layer outputs. NumPy experiments illustrate why mHC&#x27;s constraint keeps signals bounded and how AttnRes stops hidden-state growth.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 17 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/residual/" aria-label="Residual Connections: From x + F(x) to Hyper-Connections and Attention Residuals"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Decoding and Sampling: From Greedy and Beam Search to Top-p, Min-p and Speculative Decoding</span><span lang="zh">解码与采样：从贪心、束搜索到 Top-p、Min-p 与投机解码</span></h4>
+          <p class="entry-sum">The model only outputs a distribution over the next token; decoding decides which token to emit. This post covers deterministic search (greedy and beam search, length penalties, and why beam search degenerates on open-ended text), the sampling toolbox (temperature, top-k, top-p, min-p and related truncations, repetition, frequency and presence penalties, and the order in which they are applied), sampling many answers and choosing among them (best-of-N, self-consistency, pass@k), why reinforcement learning rollouts usually sample with temperature 1 and no truncation, and constrained decoding. It ends with speculative decoding, its proof of exactness, and draft-head variants such as Medusa, EAGLE and MTP. All algorithms come with tested NumPy code.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 17 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/decoding-sampling/" aria-label="Decoding and Sampling: From Greedy and Beam Search to Top-p, Min-p and Speculative Decoding"></a>
         </article>
         </div>
       </details>
