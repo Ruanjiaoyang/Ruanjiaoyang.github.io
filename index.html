@@ -449,13 +449,19 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">1 post</span><span lang="zh">1 篇</span></span></summary>
+          <span class="series-count"><span lang="en">2 posts</span><span lang="zh">2 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
-          <h4><span lang="en">The Transformer, End to End</span><span lang="zh">Transformer 整体结构：从输入到输出走一遍</span></h4>
-          <p class="entry-sum">A walk through the original encoder-decoder Transformer, following one batch of tokens from the tokenizer to the output distribution: embeddings and positional encodings, encoder and decoder blocks, the three kinds of attention and their masks, the output projection, training with teacher forcing and autoregressive inference. It then counts parameters and FLOPs, compares encoder-only, decoder-only and encoder-decoder models, shows what a modern decoder-only LLM block looks like, and maps every component to the post in this series that covers it.</p>
-          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 15 min | Author: Jiaoyang Ruan</p>
-          <a class="entry-link" href="blog/transformer/overview/" aria-label="The Transformer, End to End"></a>
+          <h4><span lang="en">The Original Transformer: The Baseline Version of Every Component</span><span lang="zh">原始 Transformer：每个部件的基础版本</span></h4>
+          <p class="entry-sum">The opening post of the series: the 2017 encoder-decoder Transformer, taken apart component by component in the order data flows through it. For each part (tokenizer, embedding and output layer, sinusoidal positional encoding, scaled dot-product and multi-head attention, masks, feed-forward network, residual connections, Post-LN layer normalization, dropout) it gives the original formula, why it was designed that way, its known limitations, and which later post covers the variants that replaced it. It also covers the original training recipe, beam-search inference, a complete PyTorch implementation, parameter and FLOP counts, and the three architecture families that grew out of it.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 23 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/overview/" aria-label="The Original Transformer: The Baseline Version of Every Component"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Tokenization: Words, Characters, Subwords and BPE</span><span lang="zh">分词器：word、char、subword 与 BPE</span></h4>
+          <p class="entry-sum">How text becomes token ids. The post compares word, character and subword granularity, works through BPE training and encoding by hand, then covers byte-level BPE and pre-tokenization (GPT-2), WordPiece (BERT), the Unigram language model and SentencePiece, and the trade-offs of vocabulary size. It closes with the visible consequences of tokenization: why LLMs struggle to spell or count letters, how numbers are split, why some languages cost more tokens, and where glitch tokens come from.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 13 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/tokenizer/" aria-label="Tokenization: Words, Characters, Subwords and BPE"></a>
         </article>
         </div>
       </details>

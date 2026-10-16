@@ -9,6 +9,7 @@ Requires: pip install markdown pyyaml
 """
 import html
 import re
+import shutil
 from pathlib import Path
 
 import markdown
@@ -73,6 +74,14 @@ def render(md):
     out = conv.convert(md)
     restore = lambda t: re.sub(r"\x00(\d+)\x00", lambda m: html.escape(store[int(m.group(1))], quote=False), t)
     return restore(out), restore(conv.toc)
+
+
+def figures(body):
+    """An image paragraph followed by an italic paragraph becomes <figure> with <figcaption>.
+    Images live in content/<series>/images/ and are copied to blog/<series>/images/."""
+    body = body.replace('src="images/', 'src="../images/')
+    return re.sub(r'<p>(<img [^>]*?) ?/?></p>\s*<p><em>(.*?)</em></p>',
+                  r'<figure>\1 loading="lazy"><figcaption>\2</figcaption></figure>', body, flags=re.S)
 
 
 def reading_minutes(md):
@@ -153,8 +162,11 @@ def main():
         dest = OUT / p["series_dir"] / p["slug"]
         dest.mkdir(parents=True, exist_ok=True)
         body_html, toc_html = render(p["body"])
+        body_html = figures(body_html)
         (dest / "index.html").write_text(page(p, body_html, toc_html), encoding="utf-8")
         print("built", dest.relative_to(ROOT))
+    for images in CONTENT.glob("*/images"):
+        shutil.copytree(images, OUT / images.parent.name / "images", dirs_exist_ok=True)
     s = INDEX.read_text(encoding="utf-8")
     i, j = s.index(START) + len(START), s.index(END)
     INDEX.write_text(s[:i] + "\n      " + blog_list(posts) + "\n      " + s[j:], encoding="utf-8")

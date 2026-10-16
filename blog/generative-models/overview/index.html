@@ -59,7 +59,10 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4
 .article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
 .article th { background: var(--surface); font-weight: 600; }
 .article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-.article img { max-width: 100%; }
+.article img { max-width: 100%; height: auto; }
+.article figure { margin: 1.8em 0; text-align: center; }
+.article figure img { background: #fff; border-radius: 8px; padding: 12px; }
+.article figcaption { margin-top: 10px; color: var(--muted); font-size: 0.85rem; line-height: 1.6; text-align: center; }
 footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
 @media (max-width: 600px) { body { font-size: 16px; } }
 </style>

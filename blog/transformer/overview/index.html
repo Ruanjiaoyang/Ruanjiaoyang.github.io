@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Transformer 整体结构：从输入到输出走一遍 · Jiaoyang Ruan</title>
-<meta name="description" content="A walk through the original encoder-decoder Transformer, following one batch of tokens from the tokenizer to the output distribution: embeddings and positional encodings, encoder and decoder blocks, the three kinds of attention and their masks, the output projection, training with teacher forcing and autoregressive inference. It then counts parameters and FLOPs, compares encoder-only, decoder-only and encoder-decoder models, shows what a modern decoder-only LLM block looks like, and maps every component to the post in this series that covers it.">
+<title>原始 Transformer：每个部件的基础版本 · Jiaoyang Ruan</title>
+<meta name="description" content="The opening post of the series: the 2017 encoder-decoder Transformer, taken apart component by component in the order data flows through it. For each part (tokenizer, embedding and output layer, sinusoidal positional encoding, scaled dot-product and multi-head attention, masks, feed-forward network, residual connections, Post-LN layer normalization, dropout) it gives the original formula, why it was designed that way, its known limitations, and which later post covers the variants that replaced it. It also covers the original training recipe, beam-search inference, a complete PyTorch implementation, parameter and FLOP counts, and the three architecture families that grew out of it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
@@ -59,7 +59,10 @@ h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4
 .article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
 .article th { background: var(--surface); font-weight: 600; }
 .article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-.article img { max-width: 100%; }
+.article img { max-width: 100%; height: auto; }
+.article figure { margin: 1.8em 0; text-align: center; }
+.article figure img { background: #fff; border-radius: 8px; padding: 12px; }
+.article figcaption { margin-top: 10px; color: var(--muted); font-size: 0.85rem; line-height: 1.6; text-align: center; }
 footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
 @media (max-width: 600px) { body { font-size: 16px; } }
 </style>
@@ -69,96 +72,62 @@ footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line);
   <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
   <header class="post-head">
     <p class="kicker">Transformer 架构 · 系列导读</p>
-    <h1>Transformer 整体结构：从输入到输出走一遍</h1>
-    <p class="subtitle">The Transformer, End to End</p>
-    <div class="meta"><span>2026-10-16</span><span class="tag">Transformer</span><span class="tag">LLM</span><span class="tag">系列导读</span></div>
+    <h1>原始 Transformer：每个部件的基础版本</h1>
+    <p class="subtitle">The Original Transformer: The Baseline Version of Every Component</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">Transformer</span><span class="tag">LLM</span><span class="tag">Attention Is All You Need</span></div>
   </header>
   <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
 <ul>
-<li><a href="#0-这个系列在讲什么">0. 这个系列在讲什么</a></li>
-<li><a href="#1-原始-transformer-的整体结构">1. 原始 Transformer 的整体结构</a></li>
-<li><a href="#2-输入从文本到向量">2. 输入：从文本到向量</a><ul>
-<li><a href="#21-分词">2.1 分词</a></li>
-<li><a href="#22-token-embedding">2.2 Token Embedding</a></li>
-<li><a href="#23-位置编码">2.3 位置编码</a></li>
+<li><a href="#0-为什么从原始-transformer-开始">0. 为什么从原始 Transformer 开始</a></li>
+<li><a href="#1-整体结构">1. 整体结构</a></li>
+<li><a href="#2-每个部件的基础版本">2. 每个部件的基础版本</a><ul>
+<li><a href="#21-分词器">2.1 分词器</a></li>
+<li><a href="#22-token-embedding-与输出层">2.2 Token Embedding 与输出层</a></li>
+<li><a href="#23-位置编码正弦函数">2.3 位置编码：正弦函数</a></li>
+<li><a href="#24-缩放点积注意力">2.4 缩放点积注意力</a></li>
+<li><a href="#25-多头注意力">2.5 多头注意力</a></li>
+<li><a href="#26-掩码">2.6 掩码</a></li>
+<li><a href="#27-三种注意力">2.7 三种注意力</a></li>
+<li><a href="#28-前馈网络ffn">2.8 前馈网络（FFN）</a></li>
+<li><a href="#29-残差连接">2.9 残差连接</a></li>
+<li><a href="#210-层归一化post-ln">2.10 层归一化：Post-LN</a></li>
+<li><a href="#211-dropout">2.11 Dropout</a></li>
+<li><a href="#212-一个-block-的完整计算">2.12 一个 block 的完整计算</a></li>
 </ul>
 </li>
-<li><a href="#3-编码器">3. 编码器</a><ul>
-<li><a href="#31-多头自注意力">3.1 多头自注意力</a></li>
-<li><a href="#32-前馈网络">3.2 前馈网络</a></li>
-<li><a href="#33-残差连接与层归一化">3.3 残差连接与层归一化</a></li>
-</ul>
-</li>
-<li><a href="#4-解码器">4. 解码器</a><ul>
-<li><a href="#41-带因果掩码的自注意力">4.1 带因果掩码的自注意力</a></li>
-<li><a href="#42-交叉注意力">4.2 交叉注意力</a></li>
-<li><a href="#43-前馈网络">4.3 前馈网络</a></li>
-<li><a href="#44-三种注意力的对照">4.4 三种注意力的对照</a></li>
-</ul>
-</li>
-<li><a href="#5-输出从向量到概率">5. 输出：从向量到概率</a><ul>
-<li><a href="#51-训练teacher-forcing">5.1 训练：Teacher Forcing</a></li>
-<li><a href="#52-推理自回归生成">5.2 推理：自回归生成</a></li>
-</ul>
-</li>
+<li><a href="#3-训练">3. 训练</a></li>
+<li><a href="#4-推理">4. 推理</a></li>
+<li><a href="#5-完整实现">5. 完整实现</a></li>
 <li><a href="#6-参数量与计算量">6. 参数量与计算量</a><ul>
 <li><a href="#61-参数量">6.1 参数量</a></li>
 <li><a href="#62-计算量">6.2 计算量</a></li>
-<li><a href="#63-复杂度随序列长度的变化">6.3 复杂度随序列长度的变化</a></li>
 </ul>
 </li>
-<li><a href="#7-三种架构家族">7. 三种架构家族</a></li>
-<li><a href="#8-现代-decoder-only-llm-的一个-block">8. 现代 decoder-only LLM 的一个 block</a></li>
-<li><a href="#9-篇目地图">9. 篇目地图</a></li>
-<li><a href="#10-怎么读">10. 怎么读</a></li>
+<li><a href="#7-结果">7. 结果</a></li>
+<li><a href="#8-三种架构家族">8. 三种架构家族</a></li>
+<li><a href="#9-从基础版本到现代-llm">9. 从基础版本到现代 LLM</a></li>
+<li><a href="#10-篇目地图">10. 篇目地图</a></li>
 <li><a href="#参考文献">参考文献</a></li>
 </ul>
 </div>
 </details>
   <article class="article">
-<h2 id="0-这个系列在讲什么">0. 这个系列在讲什么</h2>
-<p>今天几乎所有大语言模型都建立在 Transformer（Vaswani et al., 2017, <em>Attention Is All You Need</em>）之上。但"Transformer"这个词指的已经不是 2017 年那个具体的模型，而是一个<strong>骨架</strong>：分词、嵌入、位置信息、注意力、归一化、前馈网络、残差连接、输出层、解码。过去几年里，几乎每一个部件都被替换或改造过：</p>
-<ul>
-<li>位置编码从正弦函数变成了 RoPE，又发展出长度扩展、部分旋转、去掉位置编码等做法；</li>
-<li>注意力从多头注意力变成了 GQA、MLA，又出现了稀疏注意力、线性注意力和二者的混合；</li>
-<li>归一化从 Post-LN 变成了 Pre-RMSNorm，再加上 QK-Norm；</li>
-<li>前馈网络从 ReLU 变成了 SwiGLU，再变成 MoE；</li>
-<li>残差连接从固定的 $x + F(x)$ 开始变成可学习的跨层路由。</li>
-</ul>
-<p>这个系列把骨架拆开，<strong>每个部件一篇，每个变体也单独一篇</strong>，讲清楚它解决了什么问题、怎么推导、代价是什么。这一篇是导读：先把原始 Transformer 从输入到输出完整走一遍，建立整体图景，再说明现代大语言模型的一个 block 长什么样，最后给出全系列的篇目地图。</p>
-<h2 id="1-原始-transformer-的整体结构">1. 原始 Transformer 的整体结构</h2>
+<h2 id="0-为什么从原始-transformer-开始">0. 为什么从原始 Transformer 开始</h2>
+<p>今天几乎所有大语言模型都建立在 Transformer（Vaswani et al., 2017, <em>Attention Is All You Need</em>）之上。但过去几年里，它的每一个部件几乎都被替换或改造过：位置编码、注意力、归一化、前馈网络、残差连接，都有了一长串变体。</p>
+<p>要看懂这些变体，先要清楚<strong>基础版本是什么样子</strong>：每个部件原本是怎么设计的、为什么这样设计、哪里不够好。变体几乎都是针对基础版本的某个具体缺陷提出的。</p>
+<p>这一篇就做这件事：按数据流经模型的顺序，把 2017 年原始 Transformer 的每个部件拆开，给出原始公式、设计理由和已知局限，并标注后续哪一篇讨论它的变体。最后给出原始的训练方法、推理方法和一份完整的 PyTorch 实现。之后的每一篇，都以这里的基础版本为起点。</p>
+<h2 id="1-整体结构">1. 整体结构</h2>
 <p>原始 Transformer 是一个用于机器翻译的 <strong>Encoder-Decoder</strong>（编码器-解码器）模型：输入一句英文，输出一句德文。</p>
-<pre><code>源序列（英文）                         目标序列（德文，右移一位）
-     │                                        │
-  分词器                                   分词器
-     │                                        │
- Token Embedding × √d_model            Token Embedding × √d_model
-     +                                        +
- 位置编码                                  位置编码
-     │                                        │
- ┌───▼──────────────────┐            ┌───────▼────────────────────┐
- │ Encoder Block × N    │            │ Decoder Block × N          │
- │  多头自注意力         │            │  带因果掩码的多头自注意力     │
- │  Add &amp; Norm          │            │  Add &amp; Norm                │
- │  前馈网络 FFN         │  ───K,V──▶ │  交叉注意力（Q 来自解码器）   │
- │  Add &amp; Norm          │            │  Add &amp; Norm                │
- └──────────────────────┘            │  前馈网络 FFN               │
-                                     │  Add &amp; Norm                │
-                                     └───────┬────────────────────┘
-                                             │
-                                    线性层（LM Head）
-                                             │
-                                          Softmax
-                                             │
-                                  下一个 token 的概率分布
-</code></pre>
-<p>原论文的基础配置（Transformer-base）：</p>
+<figure><img alt="Transformer 模型结构" src="../images/attention-is-all-you-need-fig1-architecture.png" loading="lazy"><figcaption>图 1：Transformer 模型结构，左侧为编码器，右侧为解码器。图片来源：Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Figure 1。</figcaption></figure>
+<p>读图的顺序：左下方的源序列经过嵌入（Input Embedding）、加上位置编码（Positional Encoding），进入 $N$ 个编码器 block，每个 block 是"多头注意力 → Add &amp; Norm → 前馈网络 → Add &amp; Norm"。右下方的目标序列右移一位（Outputs, shifted right）后同样经过嵌入和位置编码，进入 $N$ 个解码器 block，每个 block 多了一个中间的多头注意力，它的 K、V 来自编码器输出（图中从左侧引过来的箭头）。最后经过线性层（Linear）和 Softmax 得到输出概率。每个 "Add &amp; Norm" 旁边绕过子层的箭头就是残差连接。</p>
+<p>原论文的两个配置：</p>
 <table>
 <thead>
 <tr>
 <th>超参数</th>
 <th>记号</th>
-<th>取值</th>
+<th>Base</th>
+<th>Big</th>
 </tr>
 </thead>
 <tbody>
@@ -166,106 +135,176 @@ footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line);
 <td>层数（编码器、解码器各）</td>
 <td>$N$</td>
 <td>6</td>
+<td>6</td>
 </tr>
 <tr>
 <td>隐藏维度</td>
 <td>$d_{\text{model}}$</td>
 <td>512</td>
+<td>1024</td>
 </tr>
 <tr>
 <td>注意力头数</td>
 <td>$h$</td>
 <td>8</td>
+<td>16</td>
 </tr>
 <tr>
 <td>每个头的维度</td>
 <td>$d_k = d_v = d_{\text{model}}/h$</td>
 <td>64</td>
+<td>64</td>
 </tr>
 <tr>
-<td>前馈网络中间维度</td>
+<td>FFN 中间维度</td>
 <td>$d_{\text{ff}}$</td>
 <td>2048</td>
+<td>4096</td>
 </tr>
 <tr>
 <td>Dropout</td>
 <td>$P_{\text{drop}}$</td>
 <td>0.1</td>
+<td>0.3</td>
+</tr>
+<tr>
+<td>参数量</td>
+<td></td>
+<td>65M</td>
+<td>213M</td>
 </tr>
 </tbody>
 </table>
-<p>下面跟着一批数据，从输入走到输出。记批大小为 $B$，序列长度为 $L$，词表大小为 $V$。</p>
-<h2 id="2-输入从文本到向量">2. 输入：从文本到向量</h2>
-<h3 id="21-分词">2.1 分词</h3>
-<p>模型不能直接处理字符串。<strong>分词器</strong>（tokenizer）把文本切成 token，再把每个 token 映射成词表中的整数 id：</p>
-<pre><code>&quot;Attention is all you need&quot;  →  [&quot;Att&quot;, &quot;ention&quot;, &quot; is&quot;, &quot; all&quot;, &quot; you&quot;, &quot; need&quot;]  →  [2103, 1463, 318, 477, 345, 761]
-</code></pre>
-<p>现代模型普遍使用<strong>子词</strong>（subword）粒度的分词，比如 BPE：常见词保持完整，生僻词被拆成若干片段。这样既不会因为词表外的词而失败，序列也不会像按字符切分那样过长。原始 Transformer 在英德翻译上使用约 37000 个 token 的共享 BPE 词表。分词的细节见第 1 篇。</p>
-<p>输出形状：整数张量 $[B, L]$。</p>
-<h3 id="22-token-embedding">2.2 Token Embedding</h3>
-<p><strong>嵌入矩阵</strong> $E\in\mathbb R^{V\times d_{\text{model}}}$ 的第 $i$ 行是 id 为 $i$ 的 token 的向量表示。嵌入就是查表：</p>
+<p>下文记批大小为 $B$，序列长度为 $L$，词表大小为 $V$，$d = d_{\text{model}}$。</p>
+<h2 id="2-每个部件的基础版本">2. 每个部件的基础版本</h2>
+<h3 id="21-分词器">2.1 分词器</h3>
+<p><strong>做什么.</strong> 把文本切成 token，映射成整数 id。</p>
+<p><strong>原始做法.</strong> 英德翻译使用 <strong>BPE</strong>（Byte Pair Encoding），源语言和目标语言<strong>共享</strong>一个约 37000 个 token 的词表；英法翻译使用 32000 个 token 的 word-piece 词表。BPE 从字符出发，反复把出现次数最多的相邻符号对合并成新符号，直到达到目标词表大小。</p>
+<p><strong>为什么.</strong> 按词切分有词表外（OOV）问题，按字符切分序列太长；子词切分让常见词完整、罕见词拆成可复用的片段。源语言和目标语言共享词表，才能共享嵌入矩阵（见 2.2）。</p>
+<p><strong>局限与变体.</strong> 以字符为初始词表仍可能遇到没见过的字符；后来 GPT-2 改为以字节为初始词表的<strong>字节级 BPE</strong>，并加入预分词规则。词表也从几万扩大到十几二十万。→ 第 1 篇。</p>
+<p>输出形状：$[B, L]$ 的整数张量。</p>
+<h3 id="22-token-embedding-与输出层">2.2 Token Embedding 与输出层</h3>
+<p><strong>做什么.</strong> 嵌入层把 token id 变成向量；输出层把最后的隐藏向量变回词表上的分数（logits）。</p>
+<p><strong>原始做法.</strong> 嵌入矩阵 $E\in\mathbb R^{V\times d}$，查表得到向量后<strong>乘以 $\sqrt{d}$</strong>：</p>
 <p>$$
-x_t = E[\text{token}_t]\in\mathbb R^{d_{\text{model}}}
+x_t = \sqrt{d}\cdot E[\text{token}_t]
 $$</p>
-<p>原论文把嵌入乘以 $\sqrt{d_{\text{model}}}$ 再使用。原因是嵌入初始化的尺度较小，而接下来要加上的正弦位置编码每个分量在 $[-1,1]$ 之间，乘以 $\sqrt{d_{\text{model}}}$ 让两者的量级相当，位置信息不至于盖过内容信息。原论文还让编码器嵌入、解码器嵌入和输出层共享同一个矩阵（权重共享）。这些见第 2 篇。</p>
-<p>输出形状：$[B, L, d_{\text{model}}]$。</p>
-<h3 id="23-位置编码">2.3 位置编码</h3>
-<p>注意力本身对输入的顺序不敏感：把序列中的 token 打乱，每个 token 得到的注意力输出只是跟着重排，数值不变（第 8 篇会证明这个"置换等变性"）。所以必须显式注入位置信息。原始 Transformer 使用固定的<strong>正弦位置编码</strong>，直接加到嵌入上：</p>
+<p>输出层是一个线性变换加 softmax：</p>
 <p>$$
-PE_{(pos, 2i)} = \sin\!\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right),\qquad
-PE_{(pos, 2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right)
+z_t = h_t E^\top,\qquad p(y_{t+1}\mid\cdot) = \mathrm{softmax}(z_t)
+$$</p>
+<p>原论文让<strong>编码器嵌入、解码器嵌入和输出层三者共享同一个矩阵 $E$</strong>（weight tying）。</p>
+<p><strong>为什么.</strong></p>
+<ul>
+<li><strong>共享权重</strong>：输入嵌入和输出层都在建立"token 与 $d$ 维向量"之间的对应关系，共享让两者处于同一语义空间，并且省下 $2Vd$ 个参数（Base 模型中约 3800 万，比一半参数还多）；</li>
+<li><strong>乘以 $\sqrt{d}$</strong>：嵌入的初始化方差约为 $1/d$，每个分量很小；而接下来要加的正弦位置编码每个分量在 $[-1,1]$。乘以 $\sqrt{d}$ 让嵌入的分量回到 $O(1)$ 的量级，位置信息不至于盖过内容信息。</li>
+</ul>
+<p><strong>局限与变体.</strong> 现代大模型中，小模型多数仍共享权重，大模型多数不共享（参数占比小，解除共享能提供更多自由度）；大词表使嵌入层和输出层成为显著的计算成本。→ 第 2 篇。</p>
+<p>输出形状：$[B, L, d]$。</p>
+<h3 id="23-位置编码正弦函数">2.3 位置编码：正弦函数</h3>
+<p><strong>做什么.</strong> 注意力本身不知道 token 的顺序（见 2.4 末尾），必须显式注入位置信息。</p>
+<p><strong>原始做法.</strong> 使用固定的正弦函数，<strong>加</strong>到嵌入上：</p>
+<p>$$
+PE_{(pos,\,2i)} = \sin\!\left(\frac{pos}{10000^{2i/d}}\right),\qquad
+PE_{(pos,\,2i+1)} = \cos\!\left(\frac{pos}{10000^{2i/d}}\right)
 $$</p>
 <p>$$
-h^{(0)}_t = \sqrt{d_{\text{model}}}\,E[\text{token}_t] + PE_t
+h^{(0)}_t = \sqrt{d}\cdot E[\text{token}_t] + PE_t
 $$</p>
-<p>位置编码是整个系列中变体最多的部件之一，第 3 到 7 篇专门讨论。</p>
-<h2 id="3-编码器">3. 编码器</h2>
-<p>编码器由 $N$ 个相同结构的 block 堆叠而成，每个 block 有两个子层。</p>
-<h3 id="31-多头自注意力">3.1 多头自注意力</h3>
-<p><strong>自注意力</strong>让序列中的每个 token 从所有 token（包括自己）那里收集信息。对输入 $X\in\mathbb R^{L\times d_{\text{model}}}$，先用三个矩阵投影出查询、键、值：</p>
+<p>第 $i$ 对维度用一个频率 $\omega_i = 10000^{-2i/d}$ 的正弦和余弦，频率从 $1$（波长 $2\pi$）几何递减到约 $1/10000$（波长约 $2\pi\cdot 10^4$）。</p>
+<p><strong>为什么.</strong></p>
+<ul>
+<li><strong>相对位置可以线性表示</strong>：对任意固定偏移 $k$，$PE_{pos+k}$ 是 $PE_{pos}$ 的线性函数。对每一对维度，</li>
+</ul>
 <p>$$
-Q = XW_Q,\quad K = XW_K,\quad V = XW_V
+\begin{pmatrix}\sin\omega_i(pos+k)\\ \cos\omega_i(pos+k)\end{pmatrix}
+=
+\begin{pmatrix}\cos\omega_i k &amp; \sin\omega_i k\\ -\sin\omega_i k &amp; \cos\omega_i k\end{pmatrix}
+\begin{pmatrix}\sin\omega_i pos\\ \cos\omega_i pos\end{pmatrix}
 $$</p>
-<p>然后计算<strong>缩放点积注意力</strong>：</p>
+<p>这是一个只依赖 $k$ 的旋转矩阵。论文认为这让模型容易学到按相对位置关注；
+- <strong>多频率</strong>：高频维度区分相邻位置，低频维度区分远距离位置，类似二进制计数中低位翻转快、高位翻转慢；
+- <strong>无参数</strong>：论文也试过可学习的位置嵌入，效果几乎相同，选择正弦是希望能外推到比训练更长的序列。</p>
+<p><strong>局限与变体.</strong> 实践中正弦编码的长度外推并不好；位置信息加在嵌入上，经过注意力投影后与内容混在一起，相对位置只能被间接利用；靠后的维度频率很低，在常见长度内几乎不变。后来出现了可学习位置编码（BERT、GPT-2）、相对位置偏置（T5）、RoPE、各种长度扩展方法，以及部分维度或部分层不加位置编码的做法。→ 第 3 到 7 篇。</p>
+<h3 id="24-缩放点积注意力">2.4 缩放点积注意力</h3>
+<p><strong>做什么.</strong> 让每个 token 根据内容的相关性，从其他 token 那里收集信息。</p>
+<p><strong>原始做法.</strong> 对输入 $X\in\mathbb R^{L\times d}$，投影出查询、键、值，然后</p>
 <p>$$
 \mathrm{Attention}(Q,K,V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)V
 $$</p>
-<p>$QK^\top$ 的第 $(i,j)$ 个元素衡量 token $i$ 有多"关注" token $j$；softmax 按行归一化成权重；再用权重对 $V$ 加权平均。除以 $\sqrt{d_k}$ 是为了让点积的方差不随维度增大，避免 softmax 饱和。</p>
-<p><strong>多头</strong>的意思是把 $d_{\text{model}}$ 维拆成 $h$ 个 $d_k$ 维的子空间，每个头独立计算注意力，最后拼接起来再投影：</p>
+<p>逐步看：</p>
+<ol>
+<li>$S = QK^\top\in\mathbb R^{L\times L}$，$S_{ij} = q_i^\top k_j$ 衡量 token $i$ 的查询与 token $j$ 的键有多匹配；</li>
+<li>除以 $\sqrt{d_k}$；</li>
+<li>对每一行做 softmax，得到注意力权重 $A_{ij}\ge 0$，$\sum_j A_{ij} = 1$；</li>
+<li>输出 $o_i = \sum_j A_{ij}v_j$，是所有值向量的加权平均。</li>
+</ol>
+<figure><img alt="缩放点积注意力" src="../images/attention-is-all-you-need-fig2-scaled-dot-product.png" loading="lazy"><figcaption>图 2（左）：缩放点积注意力。图片来源：Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Figure 2 左。</figcaption></figure>
+<p>图中自下而上依次是：$Q$ 与 $K$ 做矩阵乘法（MatMul）、缩放（Scale，即除以 $\sqrt{d_k}$）、可选的掩码（Mask）、SoftMax，最后与 $V$ 做矩阵乘法。</p>
+<p><strong>为什么除以 $\sqrt{d_k}$.</strong> 设 $q, k$ 的各分量独立、均值 0、方差 1，则</p>
 <p>$$
-\mathrm{MultiHead}(X) = \mathrm{Concat}(\text{head}_1,\dots,\text{head}_h)\,W_O,\qquad
-\text{head}_i = \mathrm{Attention}(XW_Q^{(i)}, XW_K^{(i)}, XW_V^{(i)})
+\mathrm{Var}(q^\top k) = \sum_{m=1}^{d_k}\mathrm{Var}(q_mk_m) = \sum_{m=1}^{d_k}\mathrm{Var}(q_m)\mathrm{Var}(k_m) = d_k
 $$</p>
-<p>不同的头可以学习不同类型的关系（比如句法依存、指代、相邻位置）。编码器的自注意力是<strong>双向</strong>的：每个 token 都能看到整个源序列。唯一需要的掩码是 <strong>padding mask</strong>：批内句子长短不一，补齐用的 padding 位置不应被关注。</p>
-<p>注意力的推导、$\sqrt{d_k}$ 的来由和多头的实现见第 8 篇。</p>
-<h3 id="32-前馈网络">3.2 前馈网络</h3>
-<p>注意力只做了"信息交换"：每个 token 的输出是其他 token 的值向量的加权平均，本质上是线性组合。<strong>前馈网络</strong>（FFN）对每个位置<strong>独立地</strong>做一次非线性变换：</p>
+<p>（独立且均值为 0 时，$\mathrm{Var}(XY) = \mathrm{Var}(X)\mathrm{Var}(Y)$。）点积的标准差随 $\sqrt{d_k}$ 增长。$d_k$ 较大时 softmax 的输入差距很大，输出接近 one-hot，梯度几乎为 0。除以 $\sqrt{d_k}$ 把方差拉回 1。论文还比较了加性注意力（用一个小 MLP 打分），点积注意力在理论复杂度相近的情况下可以用高度优化的矩阵乘法实现，因此更快。</p>
+<p><strong>为什么用注意力而不是 RNN 或 CNN.</strong> 论文从三个角度比较：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>每层计算量</th>
+<th>串行操作数</th>
+<th>任意两位置间的最长路径</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自注意力</td>
+<td>$O(L^2d)$</td>
+<td>$O(1)$</td>
+<td>$O(1)$</td>
+</tr>
+<tr>
+<td>RNN</td>
+<td>$O(Ld^2)$</td>
+<td>$O(L)$</td>
+<td>$O(L)$</td>
+</tr>
+<tr>
+<td>CNN（卷积核 $k$）</td>
+<td>$O(kLd^2)$</td>
+<td>$O(1)$</td>
+<td>$O(\log_k L)$</td>
+</tr>
+</tbody>
+</table>
+<p>自注意力的优势是<strong>完全并行</strong>（训练时不需要按时间步串行）和<strong>任意两个位置一步直达</strong>（长距离依赖的信号不必经过很多层传递）。代价是计算量和显存随 $L$ 平方增长。</p>
+<p><strong>一个重要性质：置换等变.</strong> 如果把输入序列打乱（左乘一个置换矩阵 $P$），则 $Q,K,V$ 都变成 $PQ,PK,PV$，</p>
 <p>$$
-\mathrm{FFN}(x) = \max(0,\ xW_1 + b_1)\,W_2 + b_2,\qquad W_1\in\mathbb R^{d_{\text{model}}\times d_{\text{ff}}},\ W_2\in\mathbb R^{d_{\text{ff}}\times d_{\text{model}}}
+\mathrm{softmax}\!\left(\frac{PQK^\top P^\top}{\sqrt{d_k}}\right)PV = P\,\mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)P^\top P V = P\cdot\mathrm{Attention}(Q,K,V)
 $$</p>
-<p>先升维到 $d_{\text{ff}} = 4d_{\text{model}}$，过 ReLU，再降回来。可以这样理解分工：注意力负责"从别的 token 那里取信息"，FFN 负责"对取到的信息做加工"。FFN 占了模型大部分参数，也被认为是存储事实性知识的主要位置。现代模型中它被替换为 SwiGLU 和 MoE，见第 24 到 27 篇。</p>
-<h3 id="33-残差连接与层归一化">3.3 残差连接与层归一化</h3>
-<p>每个子层都包在一个"残差 + 归一化"结构里（图中的 Add &amp; Norm）：</p>
+<p>（逐行 softmax 与对行列做同一置换可交换，$P^\top P = I$。）输出只是跟着重排，数值不变。所以注意力本身看不到顺序，这就是 2.3 节需要位置编码的原因。</p>
+<p><strong>局限与变体.</strong> 平方复杂度限制了上下文长度。→ 第 8 篇（注意力本身）、第 12 到 20 篇（稀疏、线性、混合、IO 优化）。</p>
+<h3 id="25-多头注意力">2.5 多头注意力</h3>
+<p><strong>做什么.</strong> 让模型在多个子空间里同时关注不同类型的关系。</p>
+<p><strong>原始做法.</strong> 把 $d$ 维拆成 $h$ 个 $d_k = d/h$ 维的头，每个头用自己的投影独立计算注意力，拼接后再做一次输出投影：</p>
 <p>$$
-x \leftarrow \mathrm{LayerNorm}\big(x + \mathrm{Sublayer}(x)\big)
+\text{head}_i = \mathrm{Attention}\big(XW_Q^{(i)},\ XW_K^{(i)},\ XW_V^{(i)}\big),\qquad W_Q^{(i)},W_K^{(i)},W_V^{(i)}\in\mathbb R^{d\times d_k}
 $$</p>
+<p>$$
+\mathrm{MultiHead}(X) = \mathrm{Concat}(\text{head}_1,\dots,\text{head}_h)\,W_O,\qquad W_O\in\mathbb R^{d\times d}
+$$</p>
+<figure><img alt="多头注意力" src="../images/attention-is-all-you-need-fig2-multi-head.png" loading="lazy"><figcaption>图 2（右）：多头注意力，$h$ 个缩放点积注意力并行计算。图片来源：Vaswani et al., "Attention Is All You Need", NeurIPS 2017, Figure 2 右。</figcaption></figure>
+<p>图中 $V$、$K$、$Q$ 各自经过线性投影（叠在一起的多层方框表示 $h$ 组投影），送入 $h$ 个并行的缩放点积注意力，结果拼接（Concat）后再经过一个线性层。</p>
+<p><strong>为什么.</strong> 单个头的注意力权重是一个分布，对每个位置只能给出一种"关注模式"的加权平均。多个头可以分别关注句法依存、指代、相邻词等不同关系。论文的消融实验显示，单头比 8 头的 BLEU 低约 0.9，头太多（每个头维度太小）也会变差。</p>
+<p><strong>多头不增加参数.</strong> $h$ 个 $d\times d_k$ 的投影拼起来正好是一个 $d\times d$ 矩阵，所以多头注意力的四个投影共 $4d^2$ 个参数，与单头相同。实现时就是一个大投影，再把结果 reshape 成 $h$ 个头。</p>
+<p><strong>局限与变体.</strong> 推理时每个头都要缓存自己的 K、V，KV Cache 很大。→ 第 9 篇（KV Cache）、第 10 篇（MQA、GQA 让多个查询头共享 K、V）、第 11 篇（MLA 把 K、V 压缩成低维隐变量）。</p>
+<h3 id="26-掩码">2.6 掩码</h3>
+<p><strong>做什么.</strong> 在 softmax 之前把不该看的位置的分数设为 $-\infty$，使其权重为 0。</p>
+<p><strong>原始做法.</strong> 两种掩码：</p>
 <ul>
-<li><strong>残差连接</strong> $x + \mathrm{Sublayer}(x)$ 让梯度可以绕过子层直接回传，使深层网络可训练；</li>
-<li><strong>层归一化</strong>（LayerNorm）把每个 token 的向量归一化到均值 0、方差 1（再乘以可学习的缩放、加上偏移），控制激活值的尺度。</li>
+<li><strong>Padding mask</strong>：批内句子长短不一，用 padding 补齐。所有注意力都要屏蔽 padding 位置作为键；</li>
+<li><strong>因果掩码</strong>（causal mask）：解码器自注意力中，位置 $i$ 不能看到 $j&gt;i$ 的位置：</li>
 </ul>
-<p>注意顺序是<strong>先加残差，再归一化</strong>，这叫 <strong>Post-LN</strong>。现代模型几乎都改成了 <strong>Pre-LN</strong>：$x\leftarrow x + \mathrm{Sublayer}(\mathrm{Norm}(x))$，训练更稳定。归一化见第 21 到 23 篇，残差见第 28 到 30 篇。</p>
-<p>一个编码器 block 的完整计算：</p>
-<p>$$
-\begin{aligned}
-x' &amp;= \mathrm{LayerNorm}\big(x + \mathrm{MultiHeadSelfAttn}(x)\big) \\
-x'' &amp;= \mathrm{LayerNorm}\big(x' + \mathrm{FFN}(x')\big)
-\end{aligned}
-$$</p>
-<p>每个 block 的输入输出形状都是 $[B, L, d_{\text{model}}]$，所以可以任意堆叠。$N$ 层之后得到编码器输出 $H_{\text{enc}}\in\mathbb R^{B\times L_{\text{src}}\times d_{\text{model}}}$，它是源序列的上下文表示。</p>
-<h2 id="4-解码器">4. 解码器</h2>
-<p>解码器也是 $N$ 个 block，每个 block 有<strong>三个</strong>子层。</p>
-<h3 id="41-带因果掩码的自注意力">4.1 带因果掩码的自注意力</h3>
-<p>解码器要逐个生成目标序列。训练时整个目标序列一次性输入，但位置 $t$ 不能看到位置 $t$ 之后的 token，否则就是"偷看答案"。做法是在 softmax 之前，把注意力分数矩阵的上三角（$j&gt;i$）设为 $-\infty$：</p>
 <p>$$
 \mathrm{scores}_{ij} =
 \begin{cases}
@@ -273,24 +312,9 @@ $$</p>
 -\infty, &amp; j &gt; i
 \end{cases}
 $$</p>
-<p>softmax 之后这些位置的权重为 0。这个掩码叫<strong>因果掩码</strong>（causal mask）。它让一次前向传播就能同时计算所有位置的预测，而每个位置只依赖它之前的 token。</p>
-<h3 id="42-交叉注意力">4.2 交叉注意力</h3>
-<p>第二个子层是<strong>交叉注意力</strong>：查询来自解码器，键和值来自编码器的输出：</p>
-<p>$$
-Q = X_{\text{dec}}W_Q,\quad K = H_{\text{enc}}W_K,\quad V = H_{\text{enc}}W_V
-$$</p>
-<p>这是源序列与目标序列交流的唯一通道：解码器在生成每个词时，去源句中"查找"相关的部分。翻译中的词对齐就是在这里学到的。交叉注意力只需要源序列的 padding mask，不需要因果掩码，因为源序列在生成前就已全部已知。</p>
-<h3 id="43-前馈网络">4.3 前馈网络</h3>
-<p>与编码器相同。每个子层同样是 Post-LN 的残差结构。</p>
-<p>一个解码器 block 的完整计算：</p>
-<p>$$
-\begin{aligned}
-y' &amp;= \mathrm{LayerNorm}\big(y + \mathrm{MaskedSelfAttn}(y)\big) \\
-y'' &amp;= \mathrm{LayerNorm}\big(y' + \mathrm{CrossAttn}(y', H_{\text{enc}})\big) \\
-y''' &amp;= \mathrm{LayerNorm}\big(y'' + \mathrm{FFN}(y'')\big)
-\end{aligned}
-$$</p>
-<h3 id="44-三种注意力的对照">4.4 三种注意力的对照</h3>
+<p><strong>为什么.</strong> 训练时整个目标序列一次性输入，如果位置 $t$ 能看到 $t+1$，预测下一个词就成了抄答案。因果掩码让一次前向传播同时得到所有位置的预测，且每个位置只依赖之前的 token，训练与推理时的信息条件一致。</p>
+<h3 id="27-三种注意力">2.7 三种注意力</h3>
+<p>原始 Transformer 中注意力以三种方式出现：</p>
 <table>
 <thead>
 <tr>
@@ -307,7 +331,7 @@ $$</p>
 <td>源序列</td>
 <td>源序列</td>
 <td>padding</td>
-<td>理解源句</td>
+<td>理解源句，双向</td>
 </tr>
 <tr>
 <td>解码器自注意力</td>
@@ -318,45 +342,261 @@ $$</p>
 </tr>
 <tr>
 <td>交叉注意力</td>
-<td>目标序列</td>
+<td>解码器</td>
 <td>编码器输出</td>
 <td>源序列 padding</td>
-<td>从源句取信息</td>
+<td>从源句取信息，学习对齐</td>
 </tr>
 </tbody>
 </table>
-<h2 id="5-输出从向量到概率">5. 输出：从向量到概率</h2>
-<p>解码器最后一层的输出 $h_t\in\mathbb R^{d_{\text{model}}}$ 经过一个线性层（<strong>LM Head</strong>）映射到词表大小的 <strong>logits</strong>，再过 softmax：</p>
+<p>交叉注意力是源序列和目标序列之间的唯一通道。解码器在生成每个词时，用自己的状态作为查询，去编码器输出中"查找"相关的部分，翻译中的词对齐就在这里学到。今天的 decoder-only 大模型没有交叉注意力，但它在多模态模型（文本查询图像特征）和编码器-解码器模型中仍然常见。</p>
+<h3 id="28-前馈网络ffn">2.8 前馈网络（FFN）</h3>
+<p><strong>做什么.</strong> 对每个位置<strong>独立地</strong>做一次非线性变换。</p>
+<p><strong>原始做法.</strong> 两层线性变换，中间是 ReLU：</p>
 <p>$$
-z_t = h_tW_{\text{out}}^\top,\quad W_{\text{out}}\in\mathbb R^{V\times d_{\text{model}}},\qquad
-p(y_{t+1}\mid y_{\le t}, x) = \mathrm{softmax}(z_t)
+\mathrm{FFN}(x) = \max(0,\ xW_1 + b_1)\,W_2 + b_2,\qquad
+W_1\in\mathbb R^{d\times d_{\text{ff}}},\ W_2\in\mathbb R^{d_{\text{ff}}\times d},\ d_{\text{ff}} = 4d
 $$</p>
-<p>原论文中 $W_{\text{out}}$ 与嵌入矩阵 $E$ 共享。</p>
-<h3 id="51-训练teacher-forcing">5.1 训练：Teacher Forcing</h3>
-<p>训练时，目标序列右移一位作为解码器输入（开头加起始符 <code>&lt;s&gt;</code>），模型在每个位置预测下一个 token。损失是所有位置的交叉熵之和：</p>
+<p>论文称之为 position-wise：同一层的 FFN 对所有位置共享参数，等价于两个卷积核大小为 1 的卷积。</p>
+<p><strong>为什么.</strong> 注意力的输出是值向量的加权平均，对值向量而言是线性的（非线性只在 softmax 权重里）。注意力负责"从别的 token 取信息"，FFN 负责"对取到的信息做加工"。先升维到 $4d$ 再降回，给了足够的容量。FFN 占每层参数的三分之二，也被认为是存储事实性知识的主要位置。</p>
+<p><strong>局限与变体.</strong> ReLU 后来被 GELU、SwiGLU 等门控激活取代；把一个 FFN 换成多个、每个 token 只激活其中几个，就得到 MoE。→ 第 24 到 27 篇。</p>
+<h3 id="29-残差连接">2.9 残差连接</h3>
+<p><strong>做什么.</strong> 让每个子层只学习"在输入上加什么"，并为梯度提供直通路径。</p>
+<p><strong>原始做法.</strong> 每个子层（注意力或 FFN）的输出加回它的输入：$x + \mathrm{Sublayer}(x)$。为了让相加成立，模型中所有子层和嵌入层的输出维度都是 $d$。</p>
+<p><strong>为什么.</strong> 设 $y = x + F(x)$，则</p>
+<p>$$
+\frac{\partial y}{\partial x} = I + \frac{\partial F}{\partial x}
+$$</p>
+<p>即使 $F$ 的梯度很小，恒等项 $I$ 也能让梯度直接传到更浅的层。这是 ResNet（He et al., 2016）的核心思想，使几十上百层的网络可以训练。</p>
+<p><strong>局限与变体.</strong> 所有层的输出不断累加在同一条"残差流"上，层数很多时每一层新增的贡献相对越来越小。新模型开始尝试多条残差流、沿深度方向的注意力等可学习的跨层连接。→ 第 28 到 30 篇。</p>
+<h3 id="210-层归一化post-ln">2.10 层归一化：Post-LN</h3>
+<p><strong>做什么.</strong> 控制激活值的尺度，稳定训练。</p>
+<p><strong>原始做法.</strong> LayerNorm 对<strong>每个 token 的 $d$ 维向量</strong>单独归一化：</p>
+<p>$$
+\mathrm{LayerNorm}(x) = \gamma\odot\frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} + \beta,\qquad
+\mu = \frac1d\sum_{m=1}^d x_m,\quad \sigma^2 = \frac1d\sum_{m=1}^d(x_m - \mu)^2
+$$</p>
+<p>$\gamma,\beta\in\mathbb R^d$ 是可学习的缩放和偏移。放置位置是<strong>先加残差，再归一化</strong>，称为 <strong>Post-LN</strong>：</p>
+<p>$$
+x\leftarrow\mathrm{LayerNorm}\big(x + \mathrm{Sublayer}(x)\big)
+$$</p>
+<p>结构图中的 "Add &amp; Norm" 就是这个意思。</p>
+<p><strong>为什么用 LayerNorm 而不是 BatchNorm.</strong> BatchNorm 对同一特征在整个批内求统计量，在 NLP 中会受到变长序列和 padding 的干扰，依赖较大的批，且训练和推理的统计量不一致。LayerNorm 只看单个 token 自己的特征，与批大小和序列长度无关。</p>
+<p><strong>局限与变体.</strong> Post-LN 下梯度从深层回传时要连续经过每一层的 LayerNorm，深层模型训练不稳定，非常依赖学习率预热（见第 3 节）。现代模型几乎都改为 <strong>Pre-LN</strong>（$x\leftarrow x + \mathrm{Sublayer}(\mathrm{Norm}(x))$），并把 LayerNorm 换成去掉均值的 <strong>RMSNorm</strong>，有的还对 Q、K 单独做归一化（QK-Norm）。→ 第 21 到 23 篇。</p>
+<h3 id="211-dropout">2.11 Dropout</h3>
+<p><strong>原始做法.</strong> 原论文称之为 residual dropout，用在两处：</p>
+<ul>
+<li>每个子层的输出在加到残差<strong>之前</strong>做 dropout：$\mathrm{LayerNorm}\big(x + \mathrm{Dropout}(\mathrm{Sublayer}(x))\big)$；</li>
+<li>嵌入与位置编码之和做 dropout。</li>
+</ul>
+<p>Base 模型 $P_{\text{drop}} = 0.1$。常见实现还会对注意力权重做 dropout。</p>
+<p><strong>现代做法.</strong> 大语言模型预训练的数据量远大于模型能记住的量，过拟合不是主要问题，多数模型在预训练时<strong>不使用 dropout</strong>，只在微调等小数据场景下视情况使用。</p>
+<h3 id="212-一个-block-的完整计算">2.12 一个 block 的完整计算</h3>
+<p>把以上部件组合起来，编码器 block：</p>
+<p>$$
+\begin{aligned}
+x' &amp;= \mathrm{LayerNorm}\Big(x + \mathrm{Dropout}\big(\mathrm{MultiHeadSelfAttn}(x)\big)\Big) \\
+x'' &amp;= \mathrm{LayerNorm}\Big(x' + \mathrm{Dropout}\big(\mathrm{FFN}(x')\big)\Big)
+\end{aligned}
+$$</p>
+<p>解码器 block：</p>
+<p>$$
+\begin{aligned}
+y' &amp;= \mathrm{LayerNorm}\Big(y + \mathrm{Dropout}\big(\mathrm{MaskedSelfAttn}(y)\big)\Big) \\
+y'' &amp;= \mathrm{LayerNorm}\Big(y' + \mathrm{Dropout}\big(\mathrm{CrossAttn}(y', H_{\text{enc}})\big)\Big) \\
+y''' &amp;= \mathrm{LayerNorm}\Big(y'' + \mathrm{Dropout}\big(\mathrm{FFN}(y'')\big)\Big)
+\end{aligned}
+$$</p>
+<p>每个 block 的输入输出形状都是 $[B, L, d]$，可以任意堆叠。</p>
+<h2 id="3-训练">3. 训练</h2>
+<p><strong>目标：Teacher Forcing 下的交叉熵.</strong> 训练时，目标序列右移一位作为解码器输入（开头加起始符），模型在每个位置预测下一个 token：</p>
 <p>$$
 \mathcal L = -\sum_{t=1}^{L_{\text{tgt}}}\log p_\theta(y_t\mid y_{&lt;t}, x)
 $$</p>
-<p>无论模型在位置 $t-1$ 预测得对不对，位置 $t$ 的输入都用<strong>真实的</strong> $y_{t-1}$。这叫 <strong>teacher forcing</strong>。加上因果掩码，整个序列的所有位置可以在一次前向传播中并行训练，这是 Transformer 相对 RNN 最大的训练效率优势。</p>
-<p>原论文的其他训练细节：</p>
-<ul>
-<li>优化器 Adam，$\beta_1 = 0.9$，$\beta_2 = 0.98$，$\epsilon = 10^{-9}$；</li>
-<li>学习率先线性预热再按步数的平方根倒数衰减：$\text{lr} = d_{\text{model}}^{-0.5}\cdot\min\big(\text{step}^{-0.5},\ \text{step}\cdot\text{warmup}^{-1.5}\big)$，warmup 为 4000 步。Post-LN 对预热非常依赖，第 22 篇会解释原因；</li>
-<li>标签平滑 $\epsilon_{ls} = 0.1$：把目标分布从 one-hot 改成"正确 token 0.9，其余平分 0.1"。这会让困惑度变差，但提升了 BLEU。</li>
-</ul>
-<h3 id="52-推理自回归生成">5.2 推理：自回归生成</h3>
+<p>无论模型在位置 $t-1$ 预测得对不对，位置 $t$ 的输入都是<strong>真实的</strong> $y_{t-1}$。配合因果掩码，一条序列的所有位置在一次前向传播中并行训练，这是 Transformer 相对 RNN 最大的训练效率优势。</p>
+<p><strong>优化器与学习率.</strong> Adam，$\beta_1 = 0.9$，$\beta_2 = 0.98$，$\epsilon = 10^{-9}$。学习率先线性预热，再按步数的平方根倒数衰减：</p>
+<p>$$
+\text{lr} = d^{-0.5}\cdot\min\big(\text{step}^{-0.5},\ \text{step}\cdot\text{warmup}^{-1.5}\big),\qquad \text{warmup} = 4000
+$$</p>
+<p>两段在 step = warmup 时相等，峰值约为 $512^{-0.5}\times 4000^{-0.5}\approx 7\times 10^{-4}$。预热对 Post-LN 至关重要：训练初期 Post-LN 靠近输出的层梯度很大，直接用大学习率容易发散（第 22 篇会推导）。</p>
+<p><strong>标签平滑.</strong> $\epsilon_{ls} = 0.1$：目标分布从 one-hot 改成正确 token 占 0.9、其余 token 平分 0.1。这会让模型"不那么确定"，困惑度变差，但 BLEU 提高。</p>
+<p><strong>规模.</strong> 每个批次约含 25000 个源 token 和 25000 个目标 token（按长度相近的句子分组）。在 8 张 P100 上，Base 模型训练 10 万步约 12 小时，Big 模型训练 30 万步约 3.5 天。评估时对最后若干个检查点的参数取平均。</p>
+<h2 id="4-推理">4. 推理</h2>
 <p>推理时没有真实的目标序列，只能<strong>自回归</strong>地生成：</p>
 <ol>
-<li>编码器对源序列做一次前向，得到 $H_{\text{enc}}$（只算一次）；</li>
-<li>解码器输入 <code>&lt;s&gt;</code>，得到第一个 token 的分布，按某种策略选出 $y_1$；</li>
-<li>把 $y_1$ 接到输入后面，再预测 $y_2$；</li>
-<li>重复，直到生成结束符 <code>&lt;/s&gt;</code> 或达到最大长度。</li>
+<li>编码器对源序列前向一次，得到 $H_{\text{enc}}$（只算一次，之后每步复用）；</li>
+<li>解码器输入起始符，得到第一个位置的分布，选出 $y_1$；</li>
+<li>把 $y_1$ 接到输入后面，预测 $y_2$；</li>
+<li>重复，直到生成结束符或达到最大长度（原论文设为源长度 + 50）。</li>
 </ol>
-<p>每一步只新增一个 token，但朴素实现会把整个前缀重新算一遍。<strong>KV Cache</strong> 把历史 token 的键和值缓存下来，每一步只计算新 token，见第 9 篇。"按某种策略选出"指的是贪心、束搜索、Top-p 采样等解码方法，见第 31 篇。</p>
-<p>训练和推理的这种不对称（训练并行、推理串行）是自回归 Transformer 的基本特征，也是推理优化的主要战场。</p>
+<p>原论文用<strong>束搜索</strong>（beam search）选择输出：每一步保留得分最高的 4 条候选序列，并用长度惩罚 $\alpha = 0.6$ 避免偏向短句。</p>
+<p>训练时并行、推理时串行，这种不对称是自回归 Transformer 的基本特征。朴素实现每一步都要把整个前缀重新算一遍；缓存历史 token 的 K、V 可以避免重复计算（第 9 篇）。大语言模型中，束搜索大多被温度采样、Top-p 采样等随机解码方法取代（第 31 篇）。</p>
+<h2 id="5-完整实现">5. 完整实现</h2>
+<p>下面是原始 Transformer（Post-LN、正弦位置编码、ReLU FFN、共享嵌入）的一份精简 PyTorch 实现，用于对照上面每个部件。</p>
+<pre><code class="language-python">import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        pos = torch.arange(max_len).unsqueeze(1)                       # (max_len, 1)
+        freq = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, d_model)
+        pe[:, 0::2] = torch.sin(pos * freq)                            # 偶数维 sin
+        pe[:, 1::2] = torch.cos(pos * freq)                            # 奇数维 cos
+        self.register_buffer(&quot;pe&quot;, pe)                                 # 固定，不训练
+
+    def forward(self, x):                                              # x: (B, L, d)
+        return x + self.pe[: x.size(1)]
+
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, n_heads, dropout):
+        super().__init__()
+        assert d_model % n_heads == 0
+        self.h, self.d_k = n_heads, d_model // n_heads
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x_q, x_kv, mask=None):
+        &quot;&quot;&quot;x_q: (B, Lq, d)；x_kv: (B, Lk, d)；mask: 可广播到 (B, h, Lq, Lk)，True 表示屏蔽&quot;&quot;&quot;
+        B, Lq, _ = x_q.shape
+        Lk = x_kv.size(1)
+        # 投影并拆成 h 个头: (B, L, d) -&gt; (B, h, L, d_k)
+        q = self.W_q(x_q).view(B, Lq, self.h, self.d_k).transpose(1, 2)
+        k = self.W_k(x_kv).view(B, Lk, self.h, self.d_k).transpose(1, 2)
+        v = self.W_v(x_kv).view(B, Lk, self.h, self.d_k).transpose(1, 2)
+
+        scores = q @ k.transpose(-2, -1) / math.sqrt(self.d_k)        # (B, h, Lq, Lk)
+        if mask is not None:
+            scores = scores.masked_fill(mask, float(&quot;-inf&quot;))
+        attn = self.drop(F.softmax(scores, dim=-1))
+        out = attn @ v                                                 # (B, h, Lq, d_k)
+
+        out = out.transpose(1, 2).contiguous().view(B, Lq, -1)        # 拼接各头
+        return self.W_o(out)
+
+
+class FeedForward(nn.Module):
+    def __init__(self, d_model, d_ff):
+        super().__init__()
+        self.w1 = nn.Linear(d_model, d_ff)
+        self.w2 = nn.Linear(d_ff, d_model)
+
+    def forward(self, x):
+        return self.w2(F.relu(self.w1(x)))
+
+
+class EncoderLayer(nn.Module):
+    def __init__(self, d_model, n_heads, d_ff, dropout):
+        super().__init__()
+        self.self_attn = MultiHeadAttention(d_model, n_heads, dropout)
+        self.ffn = FeedForward(d_model, d_ff)
+        self.norm1, self.norm2 = nn.LayerNorm(d_model), nn.LayerNorm(d_model)
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, x, src_mask):
+        # Post-LN：先加残差，再归一化
+        x = self.norm1(x + self.drop(self.self_attn(x, x, src_mask)))
+        x = self.norm2(x + self.drop(self.ffn(x)))
+        return x
+
+
+class DecoderLayer(nn.Module):
+    def __init__(self, d_model, n_heads, d_ff, dropout):
+        super().__init__()
+        self.self_attn = MultiHeadAttention(d_model, n_heads, dropout)
+        self.cross_attn = MultiHeadAttention(d_model, n_heads, dropout)
+        self.ffn = FeedForward(d_model, d_ff)
+        self.norm1, self.norm2, self.norm3 = (nn.LayerNorm(d_model) for _ in range(3))
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, y, memory, tgt_mask, src_mask):
+        y = self.norm1(y + self.drop(self.self_attn(y, y, tgt_mask)))            # 因果自注意力
+        y = self.norm2(y + self.drop(self.cross_attn(y, memory, src_mask)))      # 交叉注意力
+        y = self.norm3(y + self.drop(self.ffn(y)))
+        return y
+
+
+class Transformer(nn.Module):
+    def __init__(self, vocab_size, d_model=512, n_heads=8, d_ff=2048, n_layers=6,
+                 dropout=0.1, pad_id=0):
+        super().__init__()
+        self.d_model, self.pad_id = d_model, pad_id
+        self.embed = nn.Embedding(vocab_size, d_model)        # 编码器、解码器、输出层共享
+        self.pos = SinusoidalPositionalEncoding(d_model)
+        self.drop = nn.Dropout(dropout)
+        self.encoder = nn.ModuleList(EncoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(n_layers))
+        self.decoder = nn.ModuleList(DecoderLayer(d_model, n_heads, d_ff, dropout) for _ in range(n_layers))
+
+    def embed_tokens(self, ids):
+        return self.drop(self.pos(self.embed(ids) * math.sqrt(self.d_model)))
+
+    def make_masks(self, src, tgt):
+        # padding mask: (B, 1, 1, Lk)，屏蔽作为键的 padding 位置
+        src_mask = (src == self.pad_id)[:, None, None, :]
+        tgt_pad = (tgt == self.pad_id)[:, None, None, :]
+        # 因果掩码: (1, 1, Lt, Lt)，上三角为 True
+        Lt = tgt.size(1)
+        causal = torch.triu(torch.ones(Lt, Lt, dtype=torch.bool, device=tgt.device), diagonal=1)
+        tgt_mask = tgt_pad | causal[None, None]
+        return src_mask, tgt_mask
+
+    def encode(self, src, src_mask):
+        x = self.embed_tokens(src)
+        for layer in self.encoder:
+            x = layer(x, src_mask)
+        return x
+
+    def decode(self, tgt, memory, tgt_mask, src_mask):
+        y = self.embed_tokens(tgt)
+        for layer in self.decoder:
+            y = layer(y, memory, tgt_mask, src_mask)
+        return y @ self.embed.weight.T                        # 共享权重的输出层 -&gt; logits
+
+    def forward(self, src, tgt_in):
+        src_mask, tgt_mask = self.make_masks(src, tgt_in)
+        memory = self.encode(src, src_mask)
+        return self.decode(tgt_in, memory, tgt_mask, src_mask)  # (B, Lt, V)
+
+
+# 训练一步（teacher forcing）：解码器输入是目标右移一位，标签是目标本身
+def train_step(model, src, tgt, optimizer, label_smoothing=0.1):
+    tgt_in, tgt_out = tgt[:, :-1], tgt[:, 1:]                 # tgt 以 &lt;s&gt; 开头、&lt;/s&gt; 结尾
+    logits = model(src, tgt_in)
+    loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), tgt_out.reshape(-1),
+                           ignore_index=model.pad_id, label_smoothing=label_smoothing)
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    return loss.item()
+
+
+# 贪心解码（原论文用束搜索，这里为简洁起见用贪心）
+@torch.no_grad()
+def greedy_decode(model, src, bos_id, eos_id, max_len=100):
+    src_mask = (src == model.pad_id)[:, None, None, :]
+    memory = model.encode(src, src_mask)                      # 编码器只算一次
+    ys = torch.full((src.size(0), 1), bos_id, dtype=torch.long, device=src.device)
+    for _ in range(max_len):
+        _, tgt_mask = model.make_masks(src, ys)
+        logits = model.decode(ys, memory, tgt_mask, src_mask)
+        next_id = logits[:, -1].argmax(-1, keepdim=True)      # 只取最后一个位置
+        ys = torch.cat([ys, next_id], dim=1)
+        if (next_id == eos_id).all():
+            break
+    return ys
+</code></pre>
+<p>注意 <code>greedy_decode</code> 每一步都把整个前缀重新送进解码器，这正是第 9 篇 KV Cache 要优化的地方。</p>
 <h2 id="6-参数量与计算量">6. 参数量与计算量</h2>
 <h3 id="61-参数量">6.1 参数量</h3>
-<p>忽略偏置和归一化参数（它们很少），对隐藏维度 $d$、$d_{\text{ff}} = 4d$：</p>
+<p>忽略偏置和 LayerNorm 参数（它们很少），对 $d_{\text{ff}} = 4d$：</p>
 <table>
 <thead>
 <tr>
@@ -370,50 +610,66 @@ $$</p>
 <td>$4d^2$</td>
 </tr>
 <tr>
-<td>一个 FFN（$W_1, W_2$）</td>
-<td>$2\cdot d\cdot 4d = 8d^2$</td>
+<td>一个 FFN（$W_1,W_2$）</td>
+<td>$8d^2$</td>
 </tr>
 <tr>
-<td>编码器 block（自注意力 + FFN）</td>
+<td>编码器 block</td>
 <td>$12d^2$</td>
 </tr>
 <tr>
-<td>解码器 block（自注意力 + 交叉注意力 + FFN）</td>
+<td>解码器 block（多一个交叉注意力）</td>
 <td>$16d^2$</td>
 </tr>
 <tr>
-<td>嵌入（共享）</td>
+<td>嵌入（三处共享）</td>
 <td>$Vd$</td>
 </tr>
 </tbody>
 </table>
-<p>对 Transformer-base（$d = 512$，$N = 6$，$V\approx 37000$）：编码器 $6\times 12\times 512^2\approx 18.9$M，解码器 $6\times 16\times 512^2\approx 25.2$M，嵌入约 $19$M，合计约 $63$M，与论文报告的 65M 吻合。</p>
-<p><strong>多头不增加参数</strong>：$h$ 个头各自的 $d\times d_k$ 投影拼起来正好是一个 $d\times d$ 矩阵。头数只改变计算的划分方式。</p>
-<p>对 decoder-only 模型（没有交叉注意力），每层约 $12d^2$ 参数，总参数量近似为</p>
+<p>Base 模型：编码器 $6\times 12\times 512^2\approx 18.9$M，解码器 $6\times 16\times 512^2\approx 25.2$M，嵌入 $37000\times 512\approx 18.9$M，合计约 63M，与论文的 65M 吻合。</p>
+<p>对 decoder-only 模型（没有交叉注意力），总参数量近似为</p>
 <p>$$
 N_{\text{params}}\approx 12\,n_{\text{layer}}\,d^2
 $$</p>
-<p>例如 GPT-3 175B：$n_{\text{layer}} = 96$，$d = 12288$，$12\times 96\times 12288^2\approx 174$B，几乎完全吻合。这个公式很适合快速估算。注意 FFN 占了三分之二的参数。</p>
+<p>例如 GPT-3 175B：$12\times 96\times 12288^2\approx 174$B。这个公式很适合快速估算，也说明 FFN 占了大约三分之二的参数。</p>
 <h3 id="62-计算量">6.2 计算量</h3>
-<p>一次矩阵乘法 $[m\times n]\cdot[n\times p]$ 约需 $2mnp$ 次浮点运算（乘加各算一次）。对一个 token 做一次前向传播：</p>
+<p>一次 $[m\times n]\cdot[n\times p]$ 的矩阵乘法约需 $2mnp$ 次浮点运算。对一个 token 做一次前向：</p>
 <ul>
 <li>所有线性层：每个参数参与一次乘加，约 $2N_{\text{params}}$；</li>
-<li>注意力分数与加权求和：$QK^\top$ 和 $AV$ 对长度为 $L$ 的上下文各需约 $2Ld$，每层 $4Ld$。</li>
+<li>注意力分数与加权求和：对长度为 $L$ 的上下文，$QK^\top$ 和 $AV$ 各约 $2Ld$，每层 $4Ld$。</li>
 </ul>
-<p>所以每个 token 的前向计算约为</p>
 <p>$$
 C_{\text{forward}}\approx 2N_{\text{params}} + 4\,n_{\text{layer}}\,L\,d
 $$</p>
-<p>训练时反向传播约为前向的两倍，所以常用的估算是<strong>每个 token 训练约 $6N_{\text{params}}$ 次浮点运算</strong>（上下文不太长时注意力项可忽略）。</p>
-<h3 id="63-复杂度随序列长度的变化">6.3 复杂度随序列长度的变化</h3>
-<p>对长度为 $L$ 的整个序列：</p>
-<ul>
-<li>线性层（投影和 FFN）：$O(Ld^2)$，与长度<strong>线性</strong>相关；</li>
-<li>注意力的分数矩阵：$O(L^2d)$，与长度<strong>平方</strong>相关，而且要存储 $L\times L$ 的矩阵。</li>
-</ul>
-<p>当 $L$ 小于几倍 $d$ 时线性层占主导；长上下文时注意力的平方项成为瓶颈。这就是第 12 到 20 篇各种注意力变体（稀疏、线性、混合、IO 优化）要解决的问题。</p>
-<h2 id="7-三种架构家族">7. 三种架构家族</h2>
-<p>原始 Transformer 是 encoder-decoder，后来分化出三条路线：</p>
+<p>反向传播约为前向的两倍，所以常用的估算是<strong>每个训练 token 约 $6N_{\text{params}}$ 次浮点运算</strong>（上下文不太长时注意力项可以忽略）。</p>
+<p>对整条长度为 $L$ 的序列，线性层是 $O(Ld^2)$，注意力是 $O(L^2d)$。上下文越长，注意力的平方项越成为瓶颈。</p>
+<h2 id="7-结果">7. 结果</h2>
+<p>原论文在 WMT 2014 翻译任务上的 BLEU：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>英德</th>
+<th>英法</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Transformer Base</td>
+<td>27.3</td>
+<td>38.1</td>
+</tr>
+<tr>
+<td>Transformer Big</td>
+<td>28.4</td>
+<td>41.8</td>
+</tr>
+</tbody>
+</table>
+<p>两者都超过了当时最好的单模型和集成模型，而训练成本只是先前方法的一小部分。论文还在英语成分句法分析上验证了模型的泛化能力。</p>
+<p>但这篇论文更大的影响在翻译之外：它证明了一个<strong>完全基于注意力、可以高度并行训练</strong>的架构是可行的。一年之后，BERT 和 GPT 分别取了它的编码器和解码器，开启了预训练语言模型的时代。</p>
+<h2 id="8-三种架构家族">8. 三种架构家族</h2>
 <table>
 <thead>
 <tr>
@@ -433,7 +689,7 @@ $$</p>
 <tr>
 <td>注意力</td>
 <td>双向</td>
-<td>因果（单向）</td>
+<td>因果</td>
 <td>编码器双向 + 解码器因果 + 交叉</td>
 </tr>
 <tr>
@@ -450,16 +706,15 @@ $$</p>
 </tr>
 </tbody>
 </table>
-<p><strong>为什么今天的大语言模型几乎都是 decoder-only？</strong> 常见的解释有几条：</p>
+<p>今天的大语言模型几乎都是 decoder-only。常见的解释有：</p>
 <ul>
-<li><strong>目标统一</strong>：下一个 token 预测可以直接用海量无标注文本训练，所有任务（问答、翻译、代码、推理）都能写成"给定前文，续写"；</li>
-<li><strong>训练效率</strong>：因果掩码下每个位置都产生一个训练信号，一条序列有 $L$ 个预测目标；MLM 只在被掩码的 15% 位置上算损失；</li>
-<li><strong>推理友好</strong>：KV Cache 对因果注意力天然成立，生成时每步只需计算一个新 token；双向注意力中新 token 会改变所有旧 token 的表示，无法这样缓存；</li>
-<li><strong>规模化验证</strong>：GPT-3 之后，decoder-only 在扩展规律（scaling law）和涌现能力上被大量验证，生态和工程优化也都围绕它展开。</li>
+<li><strong>目标统一</strong>：下一个 token 预测可以直接用海量无标注文本训练，所有任务都能写成"给定前文，续写"；</li>
+<li><strong>训练信号密集</strong>：因果掩码下每个位置都产生一个训练目标；MLM 只在约 15% 被掩码的位置上计算损失；</li>
+<li><strong>推理友好</strong>：因果注意力下旧 token 的表示不会被新 token 改变，KV Cache 天然成立；</li>
+<li><strong>规模化验证</strong>：GPT-3 之后，decoder-only 在扩展规律和涌现能力上被大量验证，工程优化也都围绕它展开。</li>
 </ul>
-<p>这些都是经验性的解释，不是严格的理论结论。encoder-decoder 在输入远长于输出的任务上仍有效率优势，双向注意力的表示能力也仍被用于检索和嵌入模型。</p>
-<h2 id="8-现代-decoder-only-llm-的一个-block">8. 现代 decoder-only LLM 的一个 block</h2>
-<p>把原始 Transformer 和今天主流大语言模型（以 Llama 系列为代表）的一个 block 对照：</p>
+<p>这些是经验性的解释，不是严格的理论结论。</p>
+<h2 id="9-从基础版本到现代-llm">9. 从基础版本到现代 LLM</h2>
 <table>
 <thead>
 <tr>
@@ -472,26 +727,26 @@ $$</p>
 <tbody>
 <tr>
 <td>分词</td>
-<td>BPE，约 37K 词表</td>
+<td>BPE，约 37K 共享词表</td>
 <td>字节级 BPE，10 万到 25 万词表</td>
 <td>第 1 篇</td>
 </tr>
 <tr>
 <td>嵌入与输出</td>
-<td>共享权重，乘 $\sqrt{d}$</td>
+<td>三处共享权重，乘 $\sqrt d$</td>
 <td>小模型共享、大模型多不共享</td>
 <td>第 2 篇</td>
 </tr>
 <tr>
 <td>位置编码</td>
 <td>正弦，加在嵌入上</td>
-<td>RoPE，作用在 Q、K 上；长度扩展；部分层或部分维度不用</td>
+<td>RoPE 作用在 Q、K 上；长度扩展；部分维度或部分层不用</td>
 <td>第 3–7 篇</td>
 </tr>
 <tr>
 <td>注意力</td>
 <td>多头注意力（MHA）</td>
-<td>GQA 或 MLA；长上下文用稀疏 / 线性 / 混合注意力</td>
+<td>GQA 或 MLA；长上下文用稀疏、线性或混合注意力</td>
 <td>第 8–20 篇</td>
 </tr>
 <tr>
@@ -513,9 +768,15 @@ $$</p>
 <td>第 28–30 篇</td>
 </tr>
 <tr>
-<td>偏置项</td>
+<td>Dropout</td>
+<td>0.1</td>
+<td>预训练通常不用</td>
+<td>—</td>
+</tr>
+<tr>
+<td>线性层偏置</td>
 <td>有</td>
-<td>线性层大多去掉偏置</td>
+<td>大多去掉</td>
 <td>—</td>
 </tr>
 <tr>
@@ -526,270 +787,65 @@ $$</p>
 </tr>
 </tbody>
 </table>
-<p>写成公式，一个现代 block 是</p>
+<p>一个现代 decoder-only block 写成公式是</p>
 <p>$$
 \begin{aligned}
 h &amp;= x + \mathrm{Attn}\big(\mathrm{RMSNorm}(x)\big) \\
 x_{\text{next}} &amp;= h + \mathrm{FFN}_{\text{SwiGLU}}\big(\mathrm{RMSNorm}(h)\big)
 \end{aligned}
 $$</p>
-<p>其中 Attn 内部对 Q、K 施加 RoPE（以及可能的 QK-Norm），用 GQA 共享 K、V 头。所有 block 之后再接一个 RMSNorm 和 LM Head。骨架和 2017 年一样，但几乎每个部件都换了实现。</p>
-<h2 id="9-篇目地图">9. 篇目地图</h2>
-<p><strong>基础</strong></p>
+<p>Attn 内部对 Q、K 施加 RoPE（可能还有 QK-Norm），并用 GQA 共享 K、V 头；所有 block 之后再接一个 RMSNorm 和 LM Head。骨架与 2017 年相同，几乎每个部件都换了实现。</p>
+<h2 id="10-篇目地图">10. 篇目地图</h2>
 <table>
 <thead>
 <tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
+<th>板块</th>
+<th>篇目</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>1</td>
-<td>分词器：word / char / subword 与 BPE</td>
-<td>文本怎么变成 token？为什么大模型数不清单词里的字母？</td>
+<td>基础</td>
+<td>1 分词器 · 2 Embedding 与 LM Head</td>
 </tr>
 <tr>
-<td>2</td>
-<td>Embedding 与 LM Head</td>
-<td>嵌入和输出层为什么可以共享？大词表的代价在哪里？</td>
+<td>位置编码</td>
+<td>3 正弦与可学习绝对位置编码 · 4 T5 相对位置偏置 · 5 RoPE · 6 长度扩展（PI、RoPE base、YaRN、DCA） · 7 Partial RoPE、Decoupled RoPE 与 NoPE</td>
+</tr>
+<tr>
+<td>注意力</td>
+<td>8 缩放点积与多头注意力 · 9 KV Cache 与 Prefill / Decode · 10 MQA 与 GQA · 11 MLA · 12 滑动窗口与局部 / 全局交错 · 13 NSA · 14 DSA 与 CSA / HCA · 15 线性注意力 · 16 Gated DeltaNet · 17 KDA · 18 Lightning Attention · 19 混合注意力架构 · 20 FlashAttention</td>
+</tr>
+<tr>
+<td>归一化</td>
+<td>21 LayerNorm、BatchNorm 与 RMSNorm · 22 Pre-Norm 与 Post-Norm · 23 QK-Norm</td>
+</tr>
+<tr>
+<td>FFN 与 MoE</td>
+<td>24 FFN 与激活函数 · 25 MoE 基础与负载均衡 · 26 DeepSeekMoE · 27 LatentMoE</td>
+</tr>
+<tr>
+<td>残差连接</td>
+<td>28 残差连接与 Pre-Norm 稀释 · 29 Hyper-Connections 与 mHC · 30 Attention Residuals</td>
+</tr>
+<tr>
+<td>解码</td>
+<td>31 采样策略</td>
 </tr>
 </tbody>
 </table>
-<p><strong>位置编码</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>3</td>
-<td>正弦与可学习的绝对位置编码</td>
-<td>为什么用正余弦？绝对位置编码为什么不能外推？</td>
-</tr>
-<tr>
-<td>4</td>
-<td>T5 相对位置偏置</td>
-<td>如何把相对距离直接加到注意力分数上？</td>
-</tr>
-<tr>
-<td>5</td>
-<td>RoPE 旋转位置编码</td>
-<td>如何用绝对位置的操作得到只依赖相对位置的内积？</td>
-</tr>
-<tr>
-<td>6</td>
-<td>长度扩展：PI、调大 RoPE base、YaRN、DCA</td>
-<td>训练 4K 的模型怎么用到 128K？</td>
-</tr>
-<tr>
-<td>7</td>
-<td>Partial RoPE、Decoupled RoPE 与 NoPE</td>
-<td>位置信息是否需要占据所有维度、所有层？</td>
-</tr>
-</tbody>
-</table>
-<p><strong>注意力</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>8</td>
-<td>缩放点积注意力与多头注意力</td>
-<td>为什么除以 $\sqrt{d_k}$？自注意力和交叉注意力有何不同？</td>
-</tr>
-<tr>
-<td>9</td>
-<td>KV Cache 与 Prefill / Decode</td>
-<td>为什么缓存 K、V 而不缓存 Q？为什么解码是访存瓶颈？</td>
-</tr>
-<tr>
-<td>10</td>
-<td>MQA 与 GQA</td>
-<td>如何用共享 K、V 头压缩缓存？</td>
-</tr>
-<tr>
-<td>11</td>
-<td>MLA</td>
-<td>如何把 K、V 压成低维隐变量，又不增加计算？</td>
-</tr>
-<tr>
-<td>12</td>
-<td>滑动窗口与局部 / 全局交错注意力</td>
-<td>只看附近的 token 够不够？</td>
-</tr>
-<tr>
-<td>13</td>
-<td>NSA</td>
-<td>压缩、选择、滑窗三路如何组合成可训练的稀疏注意力？</td>
-</tr>
-<tr>
-<td>14</td>
-<td>DSA 与 CSA / HCA</td>
-<td>用轻量索引器挑出相关 token；先压缩再稀疏</td>
-</tr>
-<tr>
-<td>15</td>
-<td>线性注意力</td>
-<td>去掉 softmax 后，注意力如何变成循环状态更新？</td>
-</tr>
-<tr>
-<td>16</td>
-<td>Gated DeltaNet</td>
-<td>如何在写入新记忆时修正旧记忆，并按需遗忘？</td>
-</tr>
-<tr>
-<td>17</td>
-<td>KDA</td>
-<td>让不同特征通道有不同的遗忘速度</td>
-</tr>
-<tr>
-<td>18</td>
-<td>Lightning Attention</td>
-<td>块内与块间分开计算的线性注意力</td>
-</tr>
-<tr>
-<td>19</td>
-<td>混合注意力架构</td>
-<td>线性层与全注意力层按什么比例混合？</td>
-</tr>
-<tr>
-<td>20</td>
-<td>FlashAttention</td>
-<td>不改变结果，如何通过 IO 优化大幅加速注意力？</td>
-</tr>
-</tbody>
-</table>
-<p><strong>归一化</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>21</td>
-<td>LayerNorm、BatchNorm 与 RMSNorm</td>
-<td>为什么 NLP 不用 BatchNorm？去掉均值为什么不影响效果？</td>
-</tr>
-<tr>
-<td>22</td>
-<td>Pre-Norm 与 Post-Norm</td>
-<td>归一化放在哪里，对梯度传播意味着什么？</td>
-</tr>
-<tr>
-<td>23</td>
-<td>QK-Norm</td>
-<td>为什么要单独控制 Q、K 的长度？</td>
-</tr>
-</tbody>
-</table>
-<p><strong>FFN 与 MoE</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>24</td>
-<td>FFN 与激活函数：ReLU、GELU、SwiGLU</td>
-<td>FFN 在做什么？门控为什么有效？</td>
-</tr>
-<tr>
-<td>25</td>
-<td>MoE 基础与负载均衡</td>
-<td>稀疏激活如何扩大参数而不增加计算？专家如何均衡？</td>
-</tr>
-<tr>
-<td>26</td>
-<td>DeepSeekMoE：细粒度专家与共享专家</td>
-<td>如何让专家更专业化？</td>
-</tr>
-<tr>
-<td>27</td>
-<td>LatentMoE</td>
-<td>在低维空间里做专家计算</td>
-</tr>
-</tbody>
-</table>
-<p><strong>残差连接</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>28</td>
-<td>残差连接与 Pre-Norm 稀释</td>
-<td>残差为什么能训练深网络？越深为什么每层贡献越小？</td>
-</tr>
-<tr>
-<td>29</td>
-<td>Hyper-Connections 与 mHC</td>
-<td>把一条残差流扩展成多条，并保持稳定</td>
-</tr>
-<tr>
-<td>30</td>
-<td>Attention Residuals</td>
-<td>沿深度方向做注意力，选择读取哪些层</td>
-</tr>
-</tbody>
-</table>
-<p><strong>解码</strong></p>
-<table>
-<thead>
-<tr>
-<th>#</th>
-<th>文章</th>
-<th>核心问题</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>31</td>
-<td>采样策略</td>
-<td>贪心、束搜索、Top-k、Top-p、温度、Best-of-N 各适合什么场景？</td>
-</tr>
-</tbody>
-</table>
-<h2 id="10-怎么读">10. 怎么读</h2>
-<ul>
-<li><strong>第一次系统学习</strong>：按顺序读第 1、2、3、5、8、9、10、21、22、24、25、28、31 篇，这是现代大语言模型的主干。</li>
-<li><strong>关注长上下文与推理效率</strong>：第 6、7、9、10、11、12 到 20 篇。</li>
-<li><strong>关注前沿架构</strong>：第 7、11、14、16、17、19、27、29、30 篇，它们大多来自 2024 年之后的模型。</li>
-<li><strong>前置知识</strong>：线性代数（矩阵乘法、内积、秩）、概率（softmax、交叉熵）和基本的神经网络训练（反向传播、梯度）。</li>
-</ul>
-<p>每篇会给出推导，以及关键部件的 PyTorch 参考实现。</p>
+<p><strong>怎么读.</strong> 第一次系统学习，建议按 1、2、3、5、8、9、10、21、22、24、25、28、31 的顺序读，这是现代大语言模型的主干。关注长上下文与推理效率，读第 6、7、9 到 20 篇。关注前沿架构，读第 7、11、14、16、17、19、27、29、30 篇。前置知识只需要线性代数、softmax 与交叉熵，以及反向传播的基本概念。</p>
 <h2 id="参考文献">参考文献</h2>
 <ul>
+<li>He et al. <em>Deep Residual Learning for Image Recognition.</em> CVPR 2016.</li>
+<li>Ba, Kiros &amp; Hinton. <em>Layer Normalization.</em> 2016.</li>
+<li>Sennrich, Haddow &amp; Birch. <em>Neural Machine Translation of Rare Words with Subword Units.</em> ACL 2016.</li>
+<li>Press &amp; Wolf. <em>Using the Output Embedding to Improve Language Models.</em> EACL 2017.</li>
 <li>Vaswani et al. <em>Attention Is All You Need.</em> NeurIPS 2017.</li>
 <li>Devlin et al. <em>BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.</em> NAACL 2019.</li>
 <li>Radford et al. <em>Language Models are Unsupervised Multitask Learners.</em> 2019.</li>
 <li>Raffel et al. <em>Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer.</em> JMLR 2020.</li>
 <li>Brown et al. <em>Language Models are Few-Shot Learners.</em> NeurIPS 2020.</li>
-<li>Kaplan et al. <em>Scaling Laws for Neural Language Models.</em> 2020.</li>
 <li>Touvron et al. <em>LLaMA: Open and Efficient Foundation Language Models.</em> 2023.</li>
 </ul>
   </article>
