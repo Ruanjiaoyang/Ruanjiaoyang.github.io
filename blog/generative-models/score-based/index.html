@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Score-based 模型：不学密度，学密度的梯度 · Jiaoyang Ruan</title>
+<meta name="description" content="The score of a distribution, the gradient of its log-density, does not depend on the normalizing constant. This post derives implicit, sliced and denoising score matching, explains Langevin dynamics and why its stationary distribution is the target, analyzes the three failure modes of the naive approach (manifold hypothesis, inaccurate low-density scores, wrong mode weights), and walks through NCSN: multi-scale noise, the noise-conditional objective and annealed Langevin sampling. It closes by showing that predicting the score is the same as predicting DDPM&#x27;s noise, plus inpainting.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">从 GAN 到 Diffusion · 第 5 篇</p>
+    <h1>Score-based 模型：不学密度，学密度的梯度</h1>
+    <p class="subtitle">Score-Based Generative Models: Learn the Gradient, Not the Density</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">生成模型</span><span class="tag">Score Matching</span><span class="tag">Langevin Dynamics</span><span class="tag">NCSN</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#1-什么是-score">1. 什么是 Score</a><ul>
+<li><a href="#11-定义">1.1 定义</a></li>
+<li><a href="#12-几个例子">1.2 几个例子</a></li>
+</ul>
+</li>
+<li><a href="#2-为什么要学-score绕开归一化常数">2. 为什么要学 Score：绕开归一化常数</a><ul>
+<li><a href="#21-能量模型与归一化常数">2.1 能量模型与归一化常数</a></li>
+<li><a href="#22-各类生成模型怎样对付-55">2.2 各类生成模型怎样对付 $Z$</a></li>
+<li><a href="#23-直接用网络拟合-score">2.3 直接用网络拟合 score</a></li>
+</ul>
+</li>
+<li><a href="#3-score-matching怎样学一个看不见的梯度">3. Score Matching：怎样学一个看不见的梯度</a><ul>
+<li><a href="#31-fisher-散度">3.1 Fisher 散度</a></li>
+<li><a href="#32-隐式分数匹配">3.2 隐式分数匹配</a></li>
+<li><a href="#33-切片分数匹配">3.3 切片分数匹配</a></li>
+<li><a href="#34-去噪分数匹配">3.4 去噪分数匹配</a></li>
+<li><a href="#35-套用-ddpm-的加噪方式">3.5 套用 DDPM 的加噪方式</a></li>
+</ul>
+</li>
+<li><a href="#4-朗之万动力学只用-score-来采样">4. 朗之万动力学：只用 score 来采样</a><ul>
+<li><a href="#41-从布朗运动说起">4.1 从布朗运动说起</a></li>
+<li><a href="#42-迭代公式">4.2 迭代公式</a></li>
+<li><a href="#43-两项各自的作用">4.3 两项各自的作用</a></li>
+<li><a href="#44-为什么平稳分布是-131">4.4 为什么平稳分布是 $p(x)$</a></li>
+</ul>
+</li>
+<li><a href="#5-朴素方法的三个问题">5. 朴素方法的三个问题</a><ul>
+<li><a href="#51-流形假设score-在数据流形外没有定义">5.1 流形假设：score 在数据流形外没有定义</a></li>
+<li><a href="#52-低密度区域的-score-估计不准">5.2 低密度区域的 score 估计不准</a></li>
+<li><a href="#53-朗之万动力学分不清各模式的权重">5.3 朗之万动力学分不清各模式的权重</a></li>
+</ul>
+</li>
+<li><a href="#6-解决办法给数据加噪声">6. 解决办法：给数据加噪声</a><ul>
+<li><a href="#61-一个办法同时解决三个问题">6.1 一个办法同时解决三个问题</a></li>
+<li><a href="#62-噪声大小的两难">6.2 噪声大小的两难</a></li>
+</ul>
+</li>
+<li><a href="#7-ncsn噪声条件分数网络">7. NCSN：噪声条件分数网络</a><ul>
+<li><a href="#71-多个噪声级别">7.1 多个噪声级别</a></li>
+<li><a href="#72-训练目标">7.2 训练目标</a></li>
+<li><a href="#73-采样退火朗之万动力学">7.3 采样：退火朗之万动力学</a></li>
+<li><a href="#74-ncsnv2-的改进">7.4 NCSNv2 的改进</a></li>
+</ul>
+</li>
+<li><a href="#8-和-ddpm-的联系殊途同归">8. 和 DDPM 的联系：殊途同归</a><ul>
+<li><a href="#81-预测噪声就是预测-score">8.1 预测噪声就是预测 score</a></li>
+<li><a href="#82-两条路线的对照">8.2 两条路线的对照</a></li>
+</ul>
+</li>
+<li><a href="#9-一个应用图像修补inpainting">9. 一个应用：图像修补（Inpainting）</a></li>
+<li><a href="#10-小结">10. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<p>前面几篇讲的 DDPM 和 DDIM，是从<strong>变分推断</strong>的角度出发的：写出一个隐变量模型，推导 ELBO，化简成噪声回归。这一篇从一个完全不同的角度重新出发：<strong>不去建模概率密度本身，而是去学习它的梯度。</strong> 最后我们会看到，两条路走到了同一个地方。</p>
+<p>这一篇主要基于 Yang Song 和 Stefano Ermon 2019 年的论文 <em>Generative Modeling by Estimating Gradients of the Data Distribution</em>。它的核心贡献是基于<strong>分数匹配</strong>（Score Matching）和<strong>朗之万动力学</strong>（Langevin Dynamics）提出了一种新的生成建模方法：不需要显式地对数据概率密度建模，而是学习它的梯度（score function），再用梯度来采样，从而实现数据生成。</p>
+<h2 id="1-什么是-score">1. 什么是 Score</h2>
+<h3 id="11-定义">1.1 定义</h3>
+<p>生成模型的目标是估计数据的概率分布 $p(x)$。分布的 <strong>score function</strong>（分数函数）定义为<strong>对数密度关于数据 $x$ 的梯度</strong>：</p>
+<p>$$
+s(x) = \nabla_x \log p(x)
+$$</p>
+<p>注意两点：</p>
+<ul>
+<li>求导对象是数据 $x$，不是模型参数 $\theta$。（统计学里也有"score"这个词，指对数似然关于参数的梯度，那是另一个概念。）</li>
+<li>score 和数据同维：$x\in\mathbb{R}^d$，$s(x)\in\mathbb{R}^d$。所以 score 是空间中的一个<strong>向量场</strong>，在每个点上指向对数密度上升最快的方向。</li>
+</ul>
+<p>想象一个由两个高斯混合而成的二维分布：它的密度像两座小山，而 score 场就是遍布整个平面的一组箭头，每个箭头都指向离它最近的那座山顶，离山顶越远箭头越长，在山顶处箭头长度为零。只要知道这组箭头，从任何一点出发顺着箭头走，就能走到高密度区域。</p>
+<h3 id="12-几个例子">1.2 几个例子</h3>
+<p><strong>一维高斯。</strong> $p(x) = \mathcal{N}(x;\mu,\sigma^2)$，$\log p(x) = -\frac{(x-\mu)^2}{2\sigma^2} + C$，所以</p>
+<p>$$
+\nabla_x\log p(x) = -\frac{x-\mu}{\sigma^2}
+$$</p>
+<p>score 指向均值，大小和离均值的距离成正比，和方差成反比。</p>
+<p><strong>多维高斯。</strong> $p(x) = \mathcal{N}(x;\mu,\Sigma)$，</p>
+<p>$$
+\nabla_x\log p(x) = -\Sigma^{-1}(x-\mu)
+$$</p>
+<p><strong>混合分布。</strong> $p(x) = \sum_k \pi_k p_k(x)$，</p>
+<p>$$
+\nabla_x\log p(x) = \sum_k \underbrace{\frac{\pi_k p_k(x)}{p(x)}}_{w_k(x)}\,\nabla_x\log p_k(x)
+$$</p>
+<p>是各成分 score 的加权平均，权重 $w_k(x)$ 是"$x$ 属于第 $k$ 个成分"的后验概率。这个式子在第 5 节分析模式权重问题时会用到。</p>
+<h2 id="2-为什么要学-score绕开归一化常数">2. 为什么要学 Score：绕开归一化常数</h2>
+<h3 id="21-能量模型与归一化常数">2.1 能量模型与归一化常数</h3>
+<p>任意一个概率分布都可以写成更一般的形式：</p>
+<p>$$
+p_\theta(x) = \frac{e^{-f_\theta(x)}}{Z(\theta)}, \qquad Z(\theta) = \int e^{-f_\theta(x)}\,dx
+$$</p>
+<p>这来自<strong>能量模型</strong>（Energy-Based Models，EBM）。$f_\theta(x)$ 称为能量函数，可以是任意神经网络，能量越低的地方概率越高；$Z(\theta)$ 是归一化常数（也叫配分函数），保证 $p_\theta(x)$ 积分为 1。</p>
+<p>能量模型的表达力很强，因为 $f_\theta$ 不受任何结构限制。问题在于训练：标准做法是最大似然估计，</p>
+<p>$$
+\log p_\theta(x) = -f_\theta(x) - \log Z(\theta)
+$$</p>
+<p>而 $Z(\theta)$ 是一个高维积分，算不出来，它对 $\theta$ 的梯度也算不出来（只能用 MCMC 近似，代价很大）。</p>
+<h3 id="22-各类生成模型怎样对付-55">2.2 各类生成模型怎样对付 $Z$</h3>
+<p>回头看整个系列，不同的生成模型其实就是不同的"对付 $Z$"的方式：</p>
+<ul>
+<li><strong>自回归模型</strong>：用链式法则把联合分布分解成一维条件分布的乘积 $p(x)=\prod_i p(x_i\mid x_{&lt;i})$，每个一维分布（比如 softmax）的归一化很容易。代价是要规定一个生成顺序，且采样必须逐个进行。</li>
+<li><strong>Flow 模型</strong>：限制网络为可逆变换，由变量替换公式，密度可以用雅可比行列式精确算出，相当于从结构上保证 $Z=1$。代价是网络结构受到很大限制。</li>
+<li><strong>VAE</strong>：不直接算似然，而是优化它的一个下界（ELBO）。</li>
+<li><strong>GAN</strong>：完全绕开似然，用判别器网络去学一个分布之间的距离度量。</li>
+<li><strong>Score-based 模型</strong>：对 $\log p$ 关于 $x$ 求梯度，<strong>直接让 $Z$ 消失</strong>。</li>
+</ul>
+<p>最后一点的推导只有一行。对 $p_\theta(x) = e^{-f_\theta(x)}/Z(\theta)$ 求对数梯度：</p>
+<p>$$
+\nabla_x\log p_\theta(x) = -\nabla_x f_\theta(x) - \underbrace{\nabla_x\log Z(\theta)}_{=\,0} = -\nabla_x f_\theta(x)
+$$</p>
+<p>$Z(\theta)$ 只依赖参数、和 $x$ 无关，所以它关于 $x$ 的梯度为零。<strong>用 score 函数代替密度函数，就避开了难以处理的归一化常数。</strong></p>
+<h3 id="23-直接用网络拟合-score">2.3 直接用网络拟合 score</h3>
+<p>更进一步，既然我们最终只需要 score，那连能量函数 $f_\theta$ 都不必定义，直接用一个神经网络 $s_\theta(x)$ 去拟合 score：</p>
+<p>$$
+s_\theta(x)\approx\nabla_x\log p(x)
+$$</p>
+<p>这就是 <strong>score-based model</strong>：它不学习概率分布本身，而是学习 score。这样做的好处是对网络几乎没有任何结构要求，<strong>唯一的要求是输入和输出的维度相同</strong>。所以可以直接使用 U-Net 等图像到图像的网络。</p>
+<p>（严格来说，一个任意的向量场不一定是某个标量函数的梯度，所以 $s_\theta$ 不一定对应一个合法的密度。实践中这并不影响采样。）</p>
+<h2 id="3-score-matching怎样学一个看不见的梯度">3. Score Matching：怎样学一个看不见的梯度</h2>
+<h3 id="31-fisher-散度">3.1 Fisher 散度</h3>
+<p>最自然的目标，是让网络输出的 score 和数据真实的 score 尽量接近。用平方误差在数据分布下取期望，得到 <strong>Fisher 散度</strong>：</p>
+<p>$$
+\mathcal{J}(\theta) = \frac12\,\mathbb{E}_{p_\text{data}(x)}\Big[\big\|s_\theta(x) - \nabla_x\log p_\text{data}(x)\big\|_2^2\Big] = \frac12\int p_\text{data}(x)\,\big\|s_\theta(x) - \nabla_x\log p_\text{data}(x)\big\|_2^2\,dx
+$$</p>
+<p>在适当的条件下（比如两个分布的密度都处处为正且足够光滑），Fisher 散度为零当且仅当两个分布相等，所以它是一个合法的训练目标。</p>
+<p>问题是，直接计算 Fisher 散度是不可行的：<strong>数据的真实 score $\nabla_x\log p_\text{data}(x)$ 是未知的</strong>，我们手里只有样本，没有密度。所以需要换个思路，用一类叫做<strong>分数匹配</strong>（Score Matching）的方法：它们把 Fisher 散度改写成不含真实 score 的形式，可以直接在数据集上估计，并用随机梯度下降优化。下面介绍三种。</p>
+<h3 id="32-隐式分数匹配">3.2 隐式分数匹配</h3>
+<p>Hyvärinen (2005) 证明，通过分部积分可以把真实 score 消掉。以一维为例，展开平方：</p>
+<p>$$
+\mathcal{J}(\theta) = \frac12\int p(x)\,s_\theta(x)^2\,dx - \int p(x)\,s_\theta(x)\,\frac{\partial\log p(x)}{\partial x}\,dx + \underbrace{\frac12\int p(x)\Big(\frac{\partial\log p(x)}{\partial x}\Big)^2dx}_{\text{与 }\theta\text{ 无关}}
+$$</p>
+<p>麻烦的是中间那项。注意 $p(x)\,\frac{\partial\log p(x)}{\partial x} = \frac{\partial p(x)}{\partial x}$，然后分部积分：</p>
+<p>$$
+\int s_\theta(x)\,\frac{\partial p(x)}{\partial x}\,dx = \Big[s_\theta(x)\,p(x)\Big]_{-\infty}^{\infty} - \int p(x)\,\frac{\partial s_\theta(x)}{\partial x}\,dx = -\,\mathbb{E}_{p(x)}\Big[\frac{\partial s_\theta(x)}{\partial x}\Big]
+$$</p>
+<p>（假设 $p(x)\to0$ 足够快，边界项为零。）代回去，真实 score 不见了。推广到 $d$ 维：</p>
+<p>$$
+\mathcal{J}(\theta) = \mathbb{E}_{p_\text{data}(x)}\Big[\mathrm{tr}\big(\nabla_x s_\theta(x)\big) + \frac12\big\|s_\theta(x)\big\|_2^2\Big] + C
+$$</p>
+<p>其中 $\nabla_x s_\theta(x)$ 是 $s_\theta$ 的雅可比矩阵。这个目标只依赖网络本身和数据样本，可以直接优化。</p>
+<p>但它有一个计算上的问题：$\mathrm{tr}(\nabla_x s_\theta(x)) = \sum_{i=1}^d \frac{\partial s_{\theta,i}(x)}{\partial x_i}$ 需要雅可比矩阵的对角线，每一项都要一次反向传播，总共 $d$ 次。对一张 $256\times256\times3$ 的图像，$d\approx 2\times10^5$，完全不可行。</p>
+<h3 id="33-切片分数匹配">3.3 切片分数匹配</h3>
+<p>切片分数匹配（Sliced Score Matching，Song et al., 2019）的思路是：既然高维向量场难以比较，那就把它<strong>投影到随机方向上</strong>再比较。取随机向量 $v\sim p(v)$（比如标准高斯），目标变为</p>
+<p>$$
+\mathcal{J}_\text{SSM}(\theta) = \mathbb{E}_{p(v)}\,\mathbb{E}_{p_\text{data}(x)}\Big[v^\top\nabla_x s_\theta(x)\,v + \frac12\big(v^\top s_\theta(x)\big)^2\Big]
+$$</p>
+<p>$v^\top\nabla_x s_\theta(x)\,v$ 可以先算 $v^\top s_\theta(x)$（一个标量），再对 $x$ 求一次梯度、和 $v$ 做内积得到，只需要<strong>一次</strong>反向传播。这样就把计算量从 $d$ 次降到了常数次。它本质上是用随机投影来无偏地估计雅可比矩阵的迹（Hutchinson 迹估计）。</p>
+<h3 id="34-去噪分数匹配">3.4 去噪分数匹配</h3>
+<p>去噪分数匹配（Denoising Score Matching，Vincent, 2011）完全绕开了雅可比矩阵，后来的扩散模型实际采用的都是它。</p>
+<p><strong>思路：先给数据加噪。</strong> 选一个已知的加噪分布 $q_\sigma(\tilde x\mid x)$，比如 $\tilde x = x + \sigma\epsilon$，$\epsilon\sim\mathcal{N}(0,I)$。加噪后的数据分布为</p>
+<p>$$
+q_\sigma(\tilde x) = \int q_\sigma(\tilde x\mid x)\,p_\text{data}(x)\,dx
+$$</p>
+<p>我们改为去估计<strong>加噪后分布</strong> $q_\sigma(\tilde x)$ 的 score。它的 Fisher 散度仍然算不出来，因为 $q_\sigma(\tilde x)$ 本身也不知道。但关键的结论是：</p>
+<p>$$
+\mathbb{E}_{q_\sigma(\tilde x)}\Big[\big\|s_\theta(\tilde x) - \nabla_{\tilde x}\log q_\sigma(\tilde x)\big\|^2\Big] = \mathbb{E}_{p_\text{data}(x)}\,\mathbb{E}_{q_\sigma(\tilde x|x)}\Big[\big\|s_\theta(\tilde x) - \nabla_{\tilde x}\log q_\sigma(\tilde x\mid x)\big\|^2\Big] + C
+$$</p>
+<p><strong>左边需要边际分布的 score（未知），右边只需要条件分布的 score（已知），两者只差一个与 $\theta$ 无关的常数。</strong></p>
+<p><strong>证明。</strong> 两边展开平方。$\|s_\theta\|^2$ 项在两边相同（都是对 $\tilde x$ 的边际分布取期望）；不含 $s_\theta$ 的项都是常数。只需验证交叉项相等。左边的交叉项：</p>
+<p>$$
+\begin{aligned}
+\mathbb{E}_{q_\sigma(\tilde x)}\big[s_\theta(\tilde x)^\top\nabla_{\tilde x}\log q_\sigma(\tilde x)\big]
+&amp;= \int s_\theta(\tilde x)^\top\nabla_{\tilde x}q_\sigma(\tilde x)\,d\tilde x \\
+&amp;= \int s_\theta(\tilde x)^\top\nabla_{\tilde x}\int p_\text{data}(x)\,q_\sigma(\tilde x\mid x)\,dx\,d\tilde x \\
+&amp;= \iint p_\text{data}(x)\,q_\sigma(\tilde x\mid x)\;s_\theta(\tilde x)^\top\nabla_{\tilde x}\log q_\sigma(\tilde x\mid x)\,dx\,d\tilde x \\
+&amp;= \mathbb{E}_{p_\text{data}(x)\,q_\sigma(\tilde x|x)}\big[s_\theta(\tilde x)^\top\nabla_{\tilde x}\log q_\sigma(\tilde x\mid x)\big]
+\end{aligned}
+$$</p>
+<p>第一行用了 $q\nabla\log q = \nabla q$，第三行把梯度移进积分并再次使用同一个恒等式。这正是右边的交叉项。证毕。</p>
+<p><strong>高斯噪声下的闭式解。</strong> 对 $q_\sigma(\tilde x\mid x) = \mathcal{N}(\tilde x;x,\sigma^2 I)$，</p>
+<p>$$
+\nabla_{\tilde x}\log q_\sigma(\tilde x\mid x) = -\frac{\tilde x - x}{\sigma^2} = -\frac{\epsilon}{\sigma}
+$$</p>
+<p>于是去噪分数匹配的目标就是</p>
+<p>$$
+\mathcal{J}_\text{DSM}(\theta) = \frac12\,\mathbb{E}_{x\sim p_\text{data},\,\epsilon\sim\mathcal{N}(0,I)}\Big[\Big\|s_\theta(x+\sigma\epsilon) + \frac{\epsilon}{\sigma}\Big\|_2^2\Big]
+$$</p>
+<p>意思是：<strong>看到加噪后的样本 $\tilde x$，预测加进去的噪声方向（乘以 $-1/\sigma$）。</strong> 它不需要任何雅可比矩阵，就是一个普通的回归问题。</p>
+<p><strong>代价：学到的是加噪分布的 score。</strong> 最优解满足 $s_{\theta^*}(\tilde x) = \nabla_{\tilde x}\log q_\sigma(\tilde x)$，而不是 $\nabla_x\log p_\text{data}(x)$。只有 $\sigma$ 足够小时，$q_\sigma\approx p_\text{data}$，两者才近似相等。但 $\sigma$ 太小又会带来别的问题（见第 5 节）。</p>
+<p><strong>Tweedie 公式：score 就是去噪器。</strong> 加噪分布的 score 和"最优去噪"之间有一个漂亮的关系：</p>
+<p>$$
+\mathbb{E}[x\mid\tilde x] = \tilde x + \sigma^2\,\nabla_{\tilde x}\log q_\sigma(\tilde x)
+$$</p>
+<p>也就是说，给定一个加噪样本，<strong>沿着 score 方向走 $\sigma^2$ 那么远，就得到了对干净样本的最优（均方误差意义下）估计</strong>。估计 score 和训练一个去噪器是同一件事，这也是"去噪分数匹配"这个名字的含义。</p>
+<h3 id="35-套用-ddpm-的加噪方式">3.5 套用 DDPM 的加噪方式</h3>
+<p>去噪分数匹配可以用任何已知的加噪分布。套用 DDPM 的加噪方式：</p>
+<p>$$
+q(x_t\mid x_0) = \mathcal{N}\big(x_t;\;\sqrt{\bar\alpha_t}\,x_0,\;(1-\bar\alpha_t)I\big)
+$$</p>
+<p>其概率密度为</p>
+<p>$$
+q(x_t\mid x_0) \propto \exp\Big\{-\frac{(x_t - \sqrt{\bar\alpha_t}\,x_0)^\top(x_t - \sqrt{\bar\alpha_t}\,x_0)}{2(1-\bar\alpha_t)}\Big\}
+$$</p>
+<p>对 $x_t$ 求对数梯度，并代入 $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$：</p>
+<p>$$
+\begin{aligned}
+\nabla_{x_t}\log q(x_t\mid x_0) &amp;= -\frac{x_t - \sqrt{\bar\alpha_t}\,x_0}{1-\bar\alpha_t} \\
+&amp;= -\frac{\sqrt{1-\bar\alpha_t}\;\epsilon}{1-\bar\alpha_t} \\
+&amp;= -\frac{\epsilon}{\sqrt{1-\bar\alpha_t}}
+\end{aligned}
+$$</p>
+<p>也就是说，<strong>条件分布的 score 和加在原图上的噪声只差一个系数</strong>。由上一小节的结论，用它做回归目标学到的就是边际分布 $q(x_t)$ 的 score。所以可以用一个<strong>噪声估计网络</strong>来估计 score：</p>
+<p>$$
+s_\theta(x_t,t) = -\frac{\epsilon_\theta(x_t,t)}{\sqrt{1-\bar\alpha_t}}
+$$</p>
+<p><strong>估计噪声就是估计 score，也就是估计（加噪后的）数据分布的对数梯度。</strong> 第 8 节会更完整地展开这条联系。</p>
+<h2 id="4-朗之万动力学只用-score-来采样">4. 朗之万动力学：只用 score 来采样</h2>
+<h3 id="41-从布朗运动说起">4.1 从布朗运动说起</h3>
+<p>朗之万动力学（Langevin dynamics）原本指朗之万方程，是物理学中描述布朗运动的微分方程。布朗运动是悬浮在液体或气体中的微小颗粒所做的无规则运动：颗粒一方面受到外力（比如势能的梯度）的牵引，另一方面不断受到周围分子随机撞击的扰动。</p>
+<p>把这个思想借过来作为采样方法：<strong>把 score 当作"外力"，把高斯噪声当作"分子撞击"。</strong> 朗之万动力学可以通过一组迭代的算法从一个分布中采样，而这个算法只依赖分布的 score：</p>
+<ol>
+<li>从某个先验分布中<strong>随机采一个初始样本</strong>；</li>
+<li>利用 score 把样本逐渐推向数据分布的<strong>高概率密度区域</strong>；</li>
+<li>为了保证生成结果的多样性，采样过程需要带有<strong>随机性</strong>。布朗运动本身就是随机的，朗之万方程因此也自带一个随机项。</li>
+</ol>
+<h3 id="42-迭代公式">4.2 迭代公式</h3>
+<p>建立好 score 模型 $s_\theta(x)\approx\nabla_x\log p(x)$ 之后，就可以用朗之万动力学从任意初始分布出发，一步步逼近目标分布。它提供了一种马尔可夫链蒙特卡罗（MCMC）过程，<strong>只用 $\nabla_x\log p(x)$ 就能从 $p(x)$ 中采样</strong>。</p>
+<p>给定初始样本 $\tilde x_0\sim\pi(x)$（$\pi$ 是任意一个先验分布，比如均匀分布或高斯），迭代：</p>
+<p>$$
+\tilde x_{k+1} = \tilde x_k + \frac{\delta}{2}\,\nabla_x\log p(\tilde x_k) + \sqrt{\delta}\,z_k, \qquad z_k\sim\mathcal{N}(0,I), \quad k = 0,1,\dots,K-1
+$$</p>
+<p>$\delta&gt;0$ 是步长。实践中把真实 score 换成学到的 $s_\theta$：</p>
+<p>$$
+\tilde x_{k+1} = \tilde x_k + \frac{\delta}{2}\,s_\theta(\tilde x_k) + \sqrt{\delta}\,z_k
+$$</p>
+<p>（为了不和 DDPM 的时间步 $t$、噪声 $\epsilon$ 混淆，这里用 $k$ 表示迭代次数，$\delta$ 表示步长。）</p>
+<p>当 $\delta\to0$、$K\to\infty$ 时，在一定的正则条件下，$\tilde x_K$ 的分布收敛到 $p(x)$。$\delta$ 足够小、$K$ 足够大时，误差可以忽略。（$\delta$ 不够小时，可以用 Metropolis-Hastings 步骤来修正离散化误差，这就是 MALA 算法；但在实践中通常直接忽略。）</p>
+<h3 id="43-两项各自的作用">4.3 两项各自的作用</h3>
+<ul>
+<li><strong>漂移项</strong> $\frac{\delta}{2}\nabla_x\log p$：沿着 score 做梯度上升，把样本推向高密度区域。如果只有这一项，就是普通的梯度上升，所有样本最终都会收敛到 $\log p$ 的某个局部极大值（众数），失去多样性。</li>
+<li><strong>扩散项</strong> $\sqrt\delta\,z$：注入随机噪声，防止样本塌缩到峰值上，让它们在高密度区域附近按概率"散开"。</li>
+</ul>
+<p>两项的尺度是精心配平的：漂移项和 $\delta$ 成正比，扩散项和 $\sqrt\delta$ 成正比。正是这个比例保证了采样分布是 $p(x)$，而不是更尖或更平的分布。</p>
+<h3 id="44-为什么平稳分布是-131">4.4 为什么平稳分布是 $p(x)$</h3>
+<p>把离散迭代看成连续时间过程，步长 $\delta$ 对应时间增量 $d\tau$，得到朗之万随机微分方程</p>
+<p>$$
+dx = \nabla_x\log p(x)\,d\tau + \sqrt2\,dW
+$$</p>
+<p>$W$ 是布朗运动。它描述的粒子群的密度 $\rho(x,\tau)$ 满足 Fokker–Planck 方程</p>
+<p>$$
+\frac{\partial\rho}{\partial\tau} = -\nabla\cdot\big(\rho\,\nabla\log p\big) + \Delta\rho
+$$</p>
+<p>把 $\rho = p$ 代入：$p\,\nabla\log p = \nabla p$，所以右边是 $-\nabla\cdot\nabla p + \Delta p = -\Delta p + \Delta p = 0$。也就是说，<strong>$p$ 是这个过程的平稳分布</strong>：粒子一旦按 $p$ 分布，就会一直保持按 $p$ 分布。在一定条件下，从任何初始分布出发，最终都会收敛到它。第 6 篇会更系统地使用 Fokker–Planck 方程。</p>
+<h2 id="5-朴素方法的三个问题">5. 朴素方法的三个问题</h2>
+<p>把"去噪分数匹配学 score"和"朗之万动力学采样"直接组合起来，在真实图像上效果很差。原因有三个。</p>
+<h3 id="51-流形假设score-在数据流形外没有定义">5.1 流形假设：score 在数据流形外没有定义</h3>
+<p><strong>流形假设</strong>认为，真实世界的数据（比如图像）往往集中在高维空间中的一个<strong>低维流形</strong>上。一张 $256\times256$ 的 RGB 图像有约 20 万个维度，但"看起来像自然图像"的点只占其中极小的一部分，可以用少得多的自由度来描述。</p>
+<p>这对 score-based 模型带来两个问题：</p>
+<ul>
+<li>score 是在整个空间中定义的梯度，但在低维流形之外，$p_\text{data}=0$，$\log p_\text{data}$ 没有定义，score 也就没有定义；</li>
+<li>只有当数据分布的支撑集是整个空间时，score matching 的目标才是一个一致的估计。数据集中在低维流形上时，这个条件不成立。</li>
+</ul>
+<p>论文的实验也验证了这一点：在 CIFAR-10 上直接用切片分数匹配训练，损失曲线剧烈震荡，无法收敛；而给数据加上很小的高斯噪声（比如 $\sigma=0.01$）后，损失立刻变得平稳。</p>
+<h3 id="52-低密度区域的-score-估计不准">5.2 低密度区域的 score 估计不准</h3>
+<p>score matching 的目标是在数据分布下取期望的：</p>
+<p>$$
+\mathbb{E}_{p_\text{data}(x)}\big[\|s_\theta(x) - \nabla_x\log p_\text{data}(x)\|^2\big] = \int p_\text{data}(x)\,\|\cdots\|^2\,dx
+$$</p>
+<p>误差被 $p_\text{data}(x)$ 加权。在数据密度很低的区域，几乎没有训练样本，这部分误差对损失几乎没有贡献，网络在那里学到什么都可以。所以<strong>在数据密度较低的位置，score 的估计往往是不准确的</strong>。</p>
+<p>而朗之万采样恰恰是从一个随机初始化出发的，初始样本几乎必然落在低密度区域（高维空间中，随机一个点几乎不可能恰好落在数据流形附近）。于是在采样的早期阶段，模型很容易根据错误的梯度走偏，"脱轨"之后就很难回到正确的区域，生成结果不好。</p>
+<h3 id="53-朗之万动力学分不清各模式的权重">5.3 朗之万动力学分不清各模式的权重</h3>
+<p>即使 score 估计得很准，朗之万动力学在<strong>多模态分布</strong>上也会出问题。</p>
+<p>考虑两个支撑集不相交的分布的混合：$p(x) = \pi\,p_1(x) + (1-\pi)\,p_2(x)$。在 $p_1$ 的支撑集上，$p_2(x)=0$，所以</p>
+<p>$$
+\nabla_x\log p(x) = \nabla_x\log\big(\pi\,p_1(x)\big) = \nabla_x\log p_1(x)
+$$</p>
+<p>同理，在 $p_2$ 的支撑集上 score 等于 $\nabla_x\log p_2(x)$。<strong>混合权重 $\pi$ 完全从 score 里消失了。</strong> 不论 $\pi$ 是 0.1 还是 0.9，score 场一模一样。</p>
+<p>这意味着，单凭 score 无法知道两个模式应该各占多少比例。即使两个模式之间不是完全不相交、而是由一片低密度区域隔开，朗之万动力学也需要极长的时间才能穿过这片区域在两个模式之间"混合"，在有限步内，样本落在哪个模式主要取决于初始化，而不是真实的权重。论文的实验显示，在一个权重为 1:4 的二维高斯混合上，朗之万采样得到的两个模式的样本数大致相等，比例完全不对。</p>
+<h2 id="6-解决办法给数据加噪声">6. 解决办法：给数据加噪声</h2>
+<h3 id="61-一个办法同时解决三个问题">6.1 一个办法同时解决三个问题</h3>
+<p>三个问题有同一个解：<strong>给数据加高斯噪声</strong>。</p>
+<ul>
+<li><strong>解决流形问题</strong>：高斯噪声的支撑集是整个空间。加噪之后的数据不再局限于低维流形，score 处处有定义，score matching 的目标也变得良定。</li>
+<li><strong>解决低密度区域的问题</strong>：较大的高斯噪声会把原本数据分布中的低密度区域"填满"，扩大了数据密度的覆盖范围。这样能比较准确地估计 score 的区域就扩大了很多，score matching 在这些区域也能得到训练信号。</li>
+<li><strong>解决模式权重的问题</strong>：加噪后各个模式的支撑集重叠，混合权重重新出现在 score 中（由 1.2 节的式子，权重 $w_k(x)$ 里含有 $\pi_k$），朗之万动力学也更容易在模式之间来回移动。</li>
+</ul>
+<h3 id="62-噪声大小的两难">6.2 噪声大小的两难</h3>
+<p>但给原始分布加入噪声，会改变原始分布。所以噪声的大小需要权衡：</p>
+<ul>
+<li>加<strong>较强</strong>的噪声：更多的区域可以准确估计 score，模式之间更容易混合；但会<strong>严重破坏原本的数据分布</strong>，学到的是一个被高度模糊过的分布。</li>
+<li>加<strong>较弱</strong>的噪声：尽可能保留原始数据分布；但<strong>无法在大多数区域准确估计 score</strong>，三个问题依然存在。</li>
+</ul>
+<p>论文给出了一个巧妙的解决思路：<strong>不只用一种噪声，而是用一系列不同强度的噪声，在推理的不同阶段使用不同强度的噪声。推理刚开始时噪声较大，推理快结束时噪声较小。</strong> 这样大噪声的好处（覆盖广、易混合）和小噪声的好处（接近真实分布）可以兼得。</p>
+<h2 id="7-ncsn噪声条件分数网络">7. NCSN：噪声条件分数网络</h2>
+<h3 id="71-多个噪声级别">7.1 多个噪声级别</h3>
+<p>基于上面的分析，NCSN（Noise Conditional Score Network）从两个方面改进 score-based 生成：</p>
+<ol>
+<li>用<strong>多个级别的噪声</strong>扰动数据；</li>
+<li><strong>训练单个条件分数网络，同时估计所有噪声级别对应的 score。</strong></li>
+</ol>
+<p>具体地，取一组几何递减的噪声标准差：</p>
+<p>$$
+\sigma_i&gt;0, \qquad \frac{\sigma_1}{\sigma_2} = \frac{\sigma_2}{\sigma_3} = \cdots = \frac{\sigma_{L-1}}{\sigma_L} &gt; 1
+$$</p>
+<ul>
+<li>$\sigma_1$ 足够大，大到能"抹平"数据分布，缓解上面三个问题；</li>
+<li>$\sigma_L$ 足够小，小到加噪后的数据几乎和原始数据无法区分。</li>
+</ul>
+<p>对每个噪声级别，加噪后的分布为 $q_{\sigma_i}(\tilde x) = \int p_\text{data}(x)\,\mathcal{N}(\tilde x;x,\sigma_i^2 I)\,dx$。这一系列分布从"高度模糊"逐渐过渡到"几乎就是真实数据"，最终收敛于真实数据分布。</p>
+<h3 id="72-训练目标">7.2 训练目标</h3>
+<p>训练一个以噪声级别为条件的网络 $s_\theta(\tilde x,\sigma)$，要求它对所有 $\sigma_i$ 都满足 $s_\theta(\tilde x,\sigma_i)\approx\nabla_{\tilde x}\log q_{\sigma_i}(\tilde x)$。对单个噪声级别，用 3.4 节的去噪分数匹配：</p>
+<p>$$
+\ell(\theta;\sigma) = \frac12\,\mathbb{E}_{p_\text{data}(x)}\,\mathbb{E}_{\tilde x\sim\mathcal{N}(x,\sigma^2I)}\Big[\Big\|s_\theta(\tilde x,\sigma) + \frac{\tilde x - x}{\sigma^2}\Big\|_2^2\Big]
+$$</p>
+<p>再把所有噪声级别加权求和：</p>
+<p>$$
+\mathcal{L}(\theta;\{\sigma_i\}_{i=1}^L) = \frac1L\sum_{i=1}^L\lambda(\sigma_i)\,\ell(\theta;\sigma_i)
+$$</p>
+<p><strong>权重怎么选？</strong> 我们希望各个噪声级别的损失大致在同一个量级上。经验上，训练好的网络满足 $\|s_\theta(\tilde x,\sigma)\|_2\propto1/\sigma$（噪声越小，分布越尖，score 越大）。取 $\lambda(\sigma)=\sigma^2$，则</p>
+<p>$$
+\lambda(\sigma)\,\ell(\theta;\sigma) = \frac12\,\mathbb{E}\Big[\Big\|\sigma\,s_\theta(\tilde x,\sigma) + \epsilon\Big\|_2^2\Big], \qquad \epsilon = \frac{\tilde x - x}{\sigma}\sim\mathcal{N}(0,I)
+$$</p>
+<p>其中 $\sigma s_\theta$ 和 $\epsilon$ 都是 $O(1)$ 的量，损失的量级与 $\sigma$ 无关。这个形式和 DDPM 的 $\|\epsilon-\epsilon_\theta\|^2$ 已经非常接近了（只差一个符号和系数）。</p>
+<p><strong>网络结构。</strong> 原始 NCSN 用了一个基于 RefineNet 的 U 形网络，并用"条件实例归一化"把噪声级别 $\sigma_i$ 注入网络。后续的 NCSNv2 发现，直接把无条件网络的输出除以 $\sigma$，即 $s_\theta(\tilde x,\sigma) = s_\theta(\tilde x)/\sigma$，效果同样好，而且可以推广到训练时没见过的噪声级别。</p>
+<h3 id="73-采样退火朗之万动力学">7.3 采样：退火朗之万动力学</h3>
+<p>训练完成后，用朗之万动力学生成样本时，<strong>先使用大噪声对应的 score，再逐渐"退火"降低噪声水平</strong>。这有助于把大噪声级别的好处平稳地转移到小噪声级别，而在最小的噪声级别上，加噪数据和原始数据几乎无法区分。</p>
+<p><strong>退火朗之万动力学</strong>（Annealed Langevin Dynamics）算法：</p>
+<ol>
+<li>初始化 $\tilde x_0$（比如从均匀分布或高斯中采样）</li>
+<li><strong>for</strong> $i = 1,\dots,L$ <strong>do</strong>　　（从大噪声到小噪声）</li>
+<li>设置步长 $\alpha_i = \delta\cdot\sigma_i^2/\sigma_L^2$</li>
+<li><strong>for</strong> $k = 1,\dots,K$ <strong>do</strong></li>
+<li>采样 $z_k\sim\mathcal{N}(0,I)$</li>
+<li>$\tilde x_k = \tilde x_{k-1} + \frac{\alpha_i}{2}\,s_\theta(\tilde x_{k-1},\sigma_i) + \sqrt{\alpha_i}\,z_k$</li>
+<li><strong>end for</strong></li>
+<li>$\tilde x_0\leftarrow\tilde x_K$　　（作为下一个噪声级别的初始化）</li>
+<li><strong>end for</strong></li>
+<li><strong>return</strong> $\tilde x_K$</li>
+</ol>
+<pre><code class="language-python">@torch.no_grad()
+def annealed_langevin(score_net, shape, sigmas, K=100, delta=2e-5):
+    x = torch.rand(shape)                                  # 均匀初始化
+    for sigma in sigmas:                                   # sigmas 从大到小
+        alpha = delta * (sigma / sigmas[-1]) ** 2
+        for _ in range(K):
+            x = x + 0.5 * alpha * score_net(x, sigma) + alpha ** 0.5 * torch.randn_like(x)
+    return x
+</code></pre>
+<p>原论文的设置是 $L=10$，$\sigma_1=1$，$\sigma_{10}=0.01$，每个级别 $K=100$ 步，$\delta=2\times10^{-5}$，总共 1000 次网络前向。</p>
+<p><strong>为什么步长按 $\sigma_i^2$ 缩放？</strong> 看一步更新中"漂移"和"噪声"的比值。漂移项大小约为 $\frac{\alpha_i}{2}\|s_\theta\|\propto\alpha_i/\sigma_i$，噪声项大小约为 $\sqrt{\alpha_i}$，比值约为 $\sqrt{\alpha_i}/\sigma_i$。取 $\alpha_i\propto\sigma_i^2$，这个比值与 $i$ 无关，各个噪声级别上的朗之万采样就有相同的"信噪比"。</p>
+<p><strong>直观理解</strong>：这和模拟退火的思想一致。先在大噪声下跑，此时 score 在全空间都可靠，分布很平滑，样本能先找到正确的大致区域，并且按正确的比例分配到各个模式；然后逐步降低噪声，每一级都以上一级的结果为初始化，此时样本已经在高密度区域附近，score 估计是准确的，可以放心地精修细节。<strong>先粗后细，先找到对的区域，再精修细节。</strong></p>
+<p>NCSN 在 CIFAR-10 上达到了 8.87 的 Inception Score，是当时无条件生成模型中最好的结果，第一次证明了不依赖对抗训练、只靠 score 估计就能生成高质量图像。</p>
+<h3 id="74-ncsnv2-的改进">7.4 NCSNv2 的改进</h3>
+<p>Song &amp; Ermon (2020) 在 <em>Improved Techniques for Training Score-Based Generative Models</em> 中，从理论上分析了噪声级别和采样参数应该怎么选，让 NCSN 可以稳定地扩展到 $256\times256$ 的高分辨率图像：</p>
+<ul>
+<li><strong>最大噪声 $\sigma_1$</strong>：应当和训练集中两两样本之间的最大欧氏距离相当，这样才能保证朗之万动力学能在任意两个模式之间移动；</li>
+<li><strong>噪声级别的间隔</strong>：相邻两级之间的比值要选得让相邻的加噪分布有足够的重叠，从而能平稳过渡；</li>
+<li><strong>噪声条件的方式</strong>：如上所述，用 $s_\theta(\tilde x)/\sigma$ 代替复杂的条件归一化；</li>
+<li><strong>步长与步数</strong>：给出了根据 $\sigma$ 序列计算最优步长的方法；</li>
+<li><strong>参数的指数移动平均</strong>（EMA）：显著提升了样本的稳定性。</li>
+</ul>
+<p>此外，采样结束后常常再做一步<strong>去噪</strong>：$\tilde x\leftarrow\tilde x + \sigma_L^2\,s_\theta(\tilde x,\sigma_L)$。由 3.4 节的 Tweedie 公式，这正是对干净样本的最优估计，可以去掉最后残留的一点噪声。</p>
+<h2 id="8-和-ddpm-的联系殊途同归">8. 和 DDPM 的联系：殊途同归</h2>
+<h3 id="81-预测噪声就是预测-score">8.1 预测噪声就是预测 score</h3>
+<p>3.5 节已经推出，在 DDPM 的加噪方式下</p>
+<p>$$
+\nabla_{x_t}\log q(x_t\mid x_0) = -\frac{\epsilon}{\sqrt{1-\bar\alpha_t}}
+$$</p>
+<p>所以 DDPM 的噪声预测网络和 score 网络之间是一个简单的换算：</p>
+<p>$$
+s_\theta(x_t,t) = -\frac{\epsilon_\theta(x_t,t)}{\sqrt{1-\bar\alpha_t}}
+$$</p>
+<p>把它代入去噪分数匹配的目标：</p>
+<p>$$
+\Big\|s_\theta(x_t,t) - \nabla_{x_t}\log q(x_t\mid x_0)\Big\|^2 = \frac{1}{1-\bar\alpha_t}\,\big\|\epsilon_\theta(x_t,t) - \epsilon\big\|^2
+$$</p>
+<p>如果取权重 $\lambda(t) = 1-\bar\alpha_t$（对应 NCSN 的 $\lambda(\sigma)=\sigma^2$），就<strong>恰好</strong>得到 DDPM 的 $L_\text{simple}$。也就是说，<strong>DDPM 的 $L_\text{simple}$ 就是一个特定加权的多噪声级别去噪分数匹配</strong>。DDPM 预测的噪声，就是 score 的反方向，只差一个只依赖 $t$ 的系数。</p>
+<h3 id="82-两条路线的对照">8.2 两条路线的对照</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>NCSN（Score-based）</th>
+<th>DDPM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>出发点</td>
+<td>估计数据分布的梯度</td>
+<td>变分推断，优化 ELBO</td>
+</tr>
+<tr>
+<td>加噪方式</td>
+<td>$\tilde x = x + \sigma_i\epsilon$，$x$ 不缩放</td>
+<td>$x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$，$x_0$ 被缩小</td>
+</tr>
+<tr>
+<td>噪声级别</td>
+<td>$L\approx10$ 个，几何递减</td>
+<td>$T=1000$ 个，由 $\beta_t$ 决定</td>
+</tr>
+<tr>
+<td>网络输出</td>
+<td>score $s_\theta(\tilde x,\sigma)$</td>
+<td>噪声 $\epsilon_\theta(x_t,t)$</td>
+</tr>
+<tr>
+<td>训练目标</td>
+<td>$\sum_i\sigma_i^2\,\ell(\theta;\sigma_i)$</td>
+<td>$L_\text{simple}$</td>
+</tr>
+<tr>
+<td>采样</td>
+<td>退火朗之万：每个噪声级别跑多步</td>
+<td>祖先采样：每个噪声级别走一步</td>
+</tr>
+</tbody>
+</table>
+<p>两者在训练上本质相同：都是在一系列噪声水平上学习 score（或者等价地，学习去噪）；采样也都是由粗到细地从大噪声走向小噪声。差别主要在两处：</p>
+<ul>
+<li><strong>加噪方式</strong>：NCSN 直接叠加越来越大的噪声，数据本身不缩放，总方差随噪声增长而<strong>爆炸</strong>；DDPM 在加噪的同时把数据按 $\sqrt{\bar\alpha_t}$ 缩小，总方差<strong>保持</strong>不变。</li>
+<li><strong>采样方式</strong>：NCSN 在每个噪声级别上用朗之万动力学"原地"修正多步；DDPM 每个级别只走一步，直接跳到下一个级别。</li>
+</ul>
+<p>下一篇会看到，这两种加噪方式恰好对应 SDE 框架下的 <strong>VE-SDE</strong>（Variance Exploding）和 <strong>VP-SDE</strong>（Variance Preserving），而两种采样方式可以组合成<strong>预测-校正采样器</strong>（Predictor-Corrector）：用 DDPM 式的一步作为"预测"，再用几步朗之万作为"校正"。</p>
+<h2 id="9-一个应用图像修补inpainting">9. 一个应用：图像修补（Inpainting）</h2>
+<p>score-based 模型天然适合做图像修补这类任务，而且<strong>不需要为修补重新训练</strong>。</p>
+<p>设一张图像 $y$ 中有一部分像素已知、一部分缺失，用二值掩码 $m$ 表示（$m=1$ 为已知像素，$m=0$ 为待补全像素）。我们想从 $p(x\mid x\odot m = y\odot m)$ 中采样，即在保持已知像素不变的前提下，补全缺失部分。</p>
+<p>做法是在退火朗之万动力学中，<strong>每一步都把已知区域替换为对应噪声水平下的加噪真实值</strong>，只让未知区域跟随 score 演化：</p>
+<ol>
+<li>初始化 $\tilde x_0$</li>
+<li><strong>for</strong> $i = 1,\dots,L$ <strong>do</strong></li>
+<li>$\alpha_i = \delta\cdot\sigma_i^2/\sigma_L^2$</li>
+<li>采样 $\tilde z\sim\mathcal{N}(0,I)$，令 $\tilde y = y + \sigma_i\tilde z$　　（已知区域在当前噪声水平下的样子）</li>
+<li><strong>for</strong> $k = 1,\dots,K$ <strong>do</strong></li>
+<li>采样 $z_k\sim\mathcal{N}(0,I)$</li>
+<li>$\tilde x_k = \tilde x_{k-1} + \frac{\alpha_i}{2}\,s_\theta(\tilde x_{k-1},\sigma_i) + \sqrt{\alpha_i}\,z_k$</li>
+<li>$\tilde x_k \leftarrow \tilde x_k\odot(1-m) + \tilde y\odot m$　　（已知区域用加噪真实值覆盖）</li>
+<li><strong>end for</strong></li>
+<li>$\tilde x_0\leftarrow\tilde x_K$</li>
+<li><strong>end for</strong></li>
+<li><strong>return</strong> $\tilde x_K$</li>
+</ol>
+<p>为什么已知区域要替换为"加噪后的"真实值，而不是干净的真实值？因为在噪声级别 $\sigma_i$ 下，score 网络只认识 $q_{\sigma_i}$ 的样本；如果已知区域是干净的、未知区域是带噪声的，整张图就不像任何一个噪声级别下的样本，score 估计会出错。把已知区域也加上同样水平的噪声，整张图在每个噪声级别上都"自洽"。</p>
+<p>随着噪声逐渐降低，未知区域在 score 的引导下，逐渐长出与已知区域协调的内容。同样的思路可以推广到上色、超分辨率、去模糊等<strong>逆问题</strong>：只要知道观测与原图之间的关系，就可以在采样中加入约束，用一个无条件训练的 score 模型来解决各种条件生成任务。第 7 篇的 guidance 是这一思路更系统的版本。</p>
+<h2 id="10-小结">10. 小结</h2>
+<ul>
+<li><strong>score 与归一化常数无关</strong>：$\nabla_x\log p(x) = -\nabla_x f(x)$，所以可以用任意输入输出同维的网络去拟合，不需要关心 $Z$。</li>
+<li><strong>分数匹配</strong>把"拟合一个未知的梯度"变成可以优化的目标：隐式分数匹配需要雅可比矩阵的迹，切片分数匹配用随机投影降低代价，<strong>去噪分数匹配</strong>把它变成"预测加入的噪声"，最简单也最常用。</li>
+<li><strong>朗之万动力学</strong>只用 score 就能采样：漂移项沿 score 爬坡，扩散项注入随机性，两者配平后平稳分布恰好是目标分布。</li>
+<li><strong>朴素方法有三个问题</strong>：流形外 score 无定义、低密度区估计不准、模式权重丢失。<strong>加噪声</strong>同时解决了这三个问题。</li>
+<li><strong>NCSN</strong> 用一组几何递减的噪声，训练一个噪声条件的 score 网络，用退火朗之万动力学由粗到细地采样。</li>
+<li><strong>预测 score 与预测 DDPM 的噪声只差一个系数</strong>：$s_\theta = -\epsilon_\theta/\sqrt{1-\bar\alpha_t}$，DDPM 的 $L_\text{simple}$ 就是特定加权的去噪分数匹配。两条路线殊途同归。</li>
+</ul>
+<p>到这里，我们手上有了两个看起来很像的东西：DDPM 用一千个离散的噪声级别，NCSN 用十个离散的噪声级别。很自然的问题是：如果让噪声级别变成<strong>连续的</strong>，会发生什么？下一篇会回答：两者都变成了随机微分方程（SDE），而且只是同一个框架下的两个特例。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Hyvärinen. <em>Estimation of Non-Normalized Statistical Models by Score Matching.</em> JMLR 2005.</li>
+<li>Vincent. <em>A Connection Between Score Matching and Denoising Autoencoders.</em> Neural Computation 2011.</li>
+<li>Welling &amp; Teh. <em>Bayesian Learning via Stochastic Gradient Langevin Dynamics.</em> ICML 2011.</li>
+<li>Efron. <em>Tweedie's Formula and Selection Bias.</em> JASA 2011.</li>
+<li>Song, Garg, Shi &amp; Ermon. <em>Sliced Score Matching: A Scalable Approach to Density and Score Estimation.</em> UAI 2019.</li>
+<li>Song &amp; Ermon. <em>Generative Modeling by Estimating Gradients of the Data Distribution.</em> NeurIPS 2019.</li>
+<li>Song &amp; Ermon. <em>Improved Techniques for Training Score-Based Generative Models.</em> NeurIPS 2020.</li>
+<li>Ho, Jain &amp; Abbeel. <em>Denoising Diffusion Probabilistic Models.</em> NeurIPS 2020.</li>
+<li>Song et al. <em>Score-Based Generative Modeling through Stochastic Differential Equations.</em> ICLR 2021.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>

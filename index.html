@@ -348,6 +348,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- BLOG:START -->
       <div class="entries">
         <article class="entry">
+          <h3><span lang="en">Score-Based Generative Models: Learn the Gradient, Not the Density</span><span lang="zh">Score-based 模型：不学密度，学密度的梯度</span></h3>
+          <p class="entry-sum">The score of a distribution, the gradient of its log-density, does not depend on the normalizing constant. This post derives implicit, sliced and denoising score matching, explains Langevin dynamics and why its stationary distribution is the target, analyzes the three failure modes of the naive approach (manifold hypothesis, inaccurate low-density scores, wrong mode weights), and walks through NCSN: multi-scale noise, the noise-conditional objective and annealed Langevin sampling. It closes by showing that predicting the score is the same as predicting DDPM&#x27;s noise, plus inpainting.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/score-based/" aria-label="Score-Based Generative Models: Learn the Gradient, Not the Density"></a>
+        </article>
+        <article class="entry">
           <h3><span lang="en">DDIM: Fewer Sampling Steps Without Retraining</span><span lang="zh">DDIM：不重新训练，把 1000 步采样压到几十步</span></h3>
           <p class="entry-sum">The DDPM training loss only depends on the marginals q(x_t|x_0), not on the Markov forward chain. DDIM exploits this freedom to define a family of non-Markovian inference processes with the same marginals. This post derives the family in two ways (by induction on the paper&#x27;s definition and by solving for undetermined coefficients), shows why one network trained with L_simple serves every member of the family, and covers the eta parameter, deterministic sampling, step skipping, inversion, interpolation, and the interpretation of DDIM as an Euler step of an ODE.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
