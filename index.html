@@ -195,8 +195,8 @@ p { margin: 0; }
 
 /* education */
 .edu { display: grid; gap: 12px; }
-.edu div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 20px; }
-.edu .when { padding-top: 2px; }
+.edu div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; }
+.edu .when { padding-top: 2px; white-space: nowrap; }
 .edu b { font-weight: 600; }
 .edu p { color: var(--muted); font-size: 0.94rem; }
 
@@ -259,13 +259,13 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
     <section id="about">
       <h2><span lang="en">About</span><span lang="zh">关于我</span></h2>
       <div class="prose">
-        <p lang="en">I'm a master's student at the Institute of Science and Technology for Brain-Inspired Intelligence, Fudan University. My research focuses on <b>post-training and reinforcement learning for foundation models</b>, with a current emphasis on <b>agentic training</b>: how agents learn from environment feedback, receive denser and better-targeted supervision, and keep improving after deployment.</p>
-        <p lang="en">As first author or co-author, I have papers accepted at <b>ICML</b> and <b>CVPR</b> (Highlight), and work under review at <b>ICLR</b>. I've also carried this research into industry through internships at Meituan, Tencent and Huawei, on agentic RL, VLM alignment and multimodal retrieval.</p>
-        <p lang="zh">我目前是复旦大学类脑智能科学与技术研究院的在读硕士生，研究方向是<b>基础模型的后训练与强化学习</b>，目前重点关注 <b>Agentic 训练</b>：Agent 如何从环境反馈中学习、如何获得更密集更精准的监督信号，以及如何在部署后持续进化。</p>
-        <p lang="zh">我以第一作者或合作者身份在 <b>ICML</b>、<b>CVPR</b>（Highlight）发表论文，另有工作在投 <b>ICLR</b>。我也在美团、腾讯和华为的实习中把这些研究带进工业场景，涉及 Agentic RL、VLM 强化对齐和多模态检索。</p>
+        <p lang="en">I'm a master's student at the Institute of Science and Technology for Brain-Inspired Intelligence, Fudan University. My research focuses on <b>post-training and reinforcement learning for foundation models</b>, currently with an emphasis on <b>agentic training</b>.</p>
+        <p lang="en">As first author or co-author, I have papers accepted at <b>ICML</b> and <b>CVPR</b> (Highlight), and work under review at <b>ICLR</b>. I've also carried this research into industry through internships at Meituan and Tencent.</p>
+        <p lang="zh">我目前是复旦大学类脑智能科学与技术研究院的在读硕士生，研究方向是<b>基础模型的后训练与强化学习</b>，目前重点关注 <b>Agentic 训练</b>。</p>
+        <p lang="zh">我以第一作者或合作者身份在 <b>ICML</b>、<b>CVPR</b>（Highlight）发表论文，另有工作在投 <b>ICLR</b>。我也在美团、腾讯等公司的实习中把这些研究带进了工业场景。</p>
       </div>
-      <div class="focus" aria-label="Current interests">
-        <span class="tag">Agentic RL</span><span class="tag">On-Policy Distillation</span><span class="tag">Credit Assignment</span><span class="tag">Continual Learning for Agents</span><span class="tag">LLM Reasoning</span>
+      <div class="focus">
+        <span class="tag">Large Language Model</span><span class="tag">Reinforcement Learning</span><span class="tag">On-Policy Distillation</span><span class="tag">Reasoning</span><span class="tag">Multimodal Learning</span>
       </div>
     </section>
 
@@ -273,11 +273,11 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <h2><span lang="en">Education</span><span lang="zh">教育背景</span></h2>
       <div class="edu">
         <div>
-          <span class="when">2024.09 –<br><span lang="en">Present</span><span lang="zh">至今</span></span>
+          <span class="when">2024.09 – <span lang="en">Present</span><span lang="zh">至今</span></span>
           <p><b><span lang="en">Fudan University</span><span lang="zh">复旦大学</span></b> · <span lang="en">M.S., Institute of Science and Technology for Brain-Inspired Intelligence</span><span lang="zh">硕士，类脑智能科学与技术研究院</span></p>
         </div>
         <div>
-          <span class="when">2020.09 –<br>2024.06</span>
+          <span class="when">2020.09 – 2024.06</span>
           <p><b><span lang="en">Wuhan University</span><span lang="zh">武汉大学</span></b> · <span lang="en">Bachelor's, School of Electronic Information</span><span lang="zh">本科，电子信息学院</span></p>
         </div>
       </div>
@@ -315,9 +315,9 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <h2><span lang="en">Internships</span><span lang="zh">实习经历</span></h2>
       <ul class="ilist">
         <li>
-          <p><i>2024.06 – 2024.09</i>, <a href="https://www.huawei.com/en/">Huawei</a>, China.</p>
-          <p lang="en">Contributed to building Huawei's IT customer-service system, for example retrieving the right <b>SOP</b> document from a user's screenshot.</p>
-          <p lang="zh">参与 IT 客服系统的构建，例如根据用户截图匹配对应的 <b>SOP</b> 文档。</p>
+          <p><i>2026.05 – 2026.09</i>, <a href="https://about.meituan.com/en">Meituan</a>, China.</p>
+          <p lang="en">Research on <b>Agentic RL</b> and <b>Agent Harness</b>, bringing an agent online-learning framework to <b>continual learning for enterprise agents</b> in production.</p>
+          <p lang="zh">从事 <b>Agentic RL</b> 与 <b>Agent Harness</b> 相关研究，将 Agent 在线学习框架迁移到<b>企业级 Agent 的持续学习</b>任务并推动落地。</p>
         </li>
         <li>
           <p><i>2025.04 – 2026.03</i>, <a href="https://www.tencent.com/en-us/">Tencent IEG</a>, China.</p>
@@ -325,9 +325,9 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p lang="zh">提升腾讯内部 <b>VLM</b> 在理解任务上的能力，方法包括 <b>VLM 蒸馏</b>与 <b>GRPO 强化对齐</b>。</p>
         </li>
         <li>
-          <p><i>2026.05 – 2026.09</i>, <a href="https://about.meituan.com/en">Meituan</a>, China.</p>
-          <p lang="en">Research on <b>Agentic RL</b> and <b>Agent Harness</b>, bringing an agent online-learning framework to <b>continual learning for enterprise agents</b> in production.</p>
-          <p lang="zh">从事 <b>Agentic RL</b> 与 <b>Agent Harness</b> 相关研究，将 Agent 在线学习框架迁移到<b>企业级 Agent 的持续学习</b>任务并推动落地。</p>
+          <p><i>2024.06 – 2024.09</i>, <a href="https://www.huawei.com/en/">Huawei</a>, China.</p>
+          <p lang="en">Worked on <b>multimodal alignment</b> within the IT customer-service framework to improve its <b>retrieval</b> capability.</p>
+          <p lang="zh">参与 IT 客服框架中的<b>多模态对齐</b>相关工作，提升其<b>检索</b>能力。</p>
         </li>
       </ul>
     </section>
