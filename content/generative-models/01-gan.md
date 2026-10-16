@@ -1,0 +1,521 @@
+---
+title: "GAN：用一场博弈学习数据分布"
+title_en: "GAN: Learning a Distribution Through a Two-Player Game"
+series: "从 GAN 到 Diffusion"
+order: 1
+date: 2026-10-16
+tags: [生成模型, GAN, WGAN]
+summary_en: >
+  GANs learn to sample from a data distribution without ever writing down its density.
+  This post covers the generator and discriminator, derives the minimax objective, the optimal
+  discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks
+  through architecture and training, and analyzes vanishing gradients, mode collapse and
+  unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN,
+  CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.
+---
+
+## 0. 生成模型想解决什么问题
+
+给定一堆样本 $x_1,\dots,x_N \sim p_{\text{data}}(x)$，生成模型想做的事情是：**构造一个分布 $p_\theta(x)$，让它尽量接近 $p_{\text{data}}$，并且能从中采样出新的样本。**
+
+最直接的思路是最大似然：写出一个带参数的密度 $p_\theta(x)$，最大化
+
+$$
+\mathbb{E}_{x\sim p_\text{data}}\big[\log p_\theta(x)\big] \approx \frac1N\sum_{i=1}^N \log p_\theta(x_i)
+$$
+
+但对图像这种高维数据，"密度函数既要足够灵活，又要能精确算出归一化常数"几乎做不到。这个系列后面的 VAE、Diffusion、Score-based 模型，本质上都在和这个归一化常数周旋。
+
+生成对抗网络（Generative Adversarial Network，GAN）由 Ian Goodfellow 等人在 2014 年提出，它选了一条完全不同的路：**干脆不写密度，只学一个采样器，再让另一个网络来判断采样器学得好不好。**
+
+## 1. GAN 的基本原理
+
+GAN 由两个神经网络组成，二者通过对抗训练共同提升。
+
+### 1.1 生成器 $G$
+
+生成器的目标是**从随机噪声中生成尽可能接近真实数据分布的样本**。
+
+- 输入：一个低维随机噪声向量 $z \sim p(z)$，通常取标准高斯 $\mathcal{N}(0,I)$ 或均匀分布 $U[-1,1]$，维度常见为 100 到 512。
+- 处理：经过一系列变换（全连接层、卷积层、转置卷积层等）。
+- 输出：一个和真实数据同形状的样本 $G(z)$，例如一张 $64\times 64\times 3$ 的图像。
+
+$z$ 的分布经过 $G$ 推送之后，得到生成分布 $p_g$。注意 $p_g$ 是**隐式**的：我们能从中采样（采一个 $z$，算 $G(z)$），但写不出 $p_g(x)$ 的表达式，也算不出某个样本的概率。
+
+### 1.2 判别器 $D$
+
+判别器的目标是**区分输入数据来自真实数据集还是来自生成器**。
+
+- 输入：一个样本 $x$，可能是真实样本，也可能是 $G(z)$。
+- 输出：一个标量 $D(x)\in(0,1)$，表示 $D$ 认为 $x$ 是真实样本的概率。接近 1 表示"真"，接近 0 表示"假"。
+
+### 1.3 对抗
+
+两个网络的目标正好相反：
+
+- **生成器**希望生成能"骗过"判别器的假样本，即希望 $D(G(z))$ 接近 1；
+- **判别器**希望准确区分真假，即希望 $D(x)$ 对真实样本接近 1，$D(G(z))$ 对生成样本接近 0。
+
+一个常用的比喻是**造假者与鉴定师**：鉴定师越来越会识别假画，迫使造假者画得越来越像；造假者越来越高明，又迫使鉴定师去关注更细微的破绽。理想的终点是：生成器的样本已经真假难辨，判别器只能随机猜，对任何输入都输出 $\tfrac12$。
+
+这里有一个值得注意的点：**生成器从头到尾都没有见过真实数据。** 它所知道的关于真实数据的一切，都来自判别器回传的梯度。判别器在这里扮演的角色，就是一个**可学习的损失函数**。
+
+## 2. 损失函数
+
+### 2.1 判别器的目标
+
+判别器本质上在做二分类：真实样本标签为 1，生成样本标签为 0。用二元交叉熵，它要最大化
+
+$$
+\max_D\; \mathbb{E}_{x\sim p_\text{data}}\big[\log D(x)\big] + \mathbb{E}_{z\sim p(z)}\big[\log\big(1 - D(G(z))\big)\big]
+$$
+
+第一项让 $D$ 对真实数据输出接近 1，第二项让 $D$ 对生成数据输出接近 0。
+
+### 2.2 生成器的目标
+
+生成器只能影响第二项（第一项与 $G$ 无关）。它希望判别器把生成样本判为真，也就是让 $D(G(z))$ 变大、让 $\log(1-D(G(z)))$ 变小：
+
+$$
+\min_G\; \mathbb{E}_{z\sim p(z)}\big[\log\big(1 - D(G(z))\big)\big]
+$$
+
+### 2.3 合并为 minimax 目标
+
+把两者写在一起，就是 GAN 原论文的目标函数：
+
+$$
+\min_G \max_D \; V(D,G) = \mathbb{E}_{x\sim p_\text{data}}\big[\log D(x)\big] + \mathbb{E}_{z\sim p(z)}\big[\log\big(1 - D(G(z))\big)\big]
+$$
+
+这是一个**两人零和博弈**：$D$ 想让 $V$ 尽量大，$G$ 想让 $V$ 尽量小。
+
+利用 $x = G(z)$ 的换元，第二项也可以写成对 $p_g$ 的期望：
+
+$$
+V(D,G) = \mathbb{E}_{x\sim p_\text{data}}\big[\log D(x)\big] + \mathbb{E}_{x\sim p_g}\big[\log\big(1 - D(x)\big)\big]
+$$
+
+下面的理论分析都基于这个形式。
+
+### 2.4 最优判别器
+
+先固定 $G$，问：最好的判别器长什么样？把期望写成积分：
+
+$$
+V(D,G) = \int_x \Big[\, p_\text{data}(x)\log D(x) + p_g(x)\log\big(1-D(x)\big) \Big]\, dx
+$$
+
+积分里每个 $x$ 的被积函数互不影响，所以可以**逐点**最大化。对固定的 $x$，记 $a = p_\text{data}(x)$，$b = p_g(x)$，$y = D(x)$，要最大化
+
+$$
+f(y) = a\log y + b\log(1-y), \qquad y\in(0,1)
+$$
+
+求导令其为零：
+
+$$
+f'(y) = \frac{a}{y} - \frac{b}{1-y} = 0 \;\;\Longrightarrow\;\; y = \frac{a}{a+b}
+$$
+
+二阶导 $f''(y) = -\frac{a}{y^2} - \frac{b}{(1-y)^2} < 0$，所以这是最大值。于是最优判别器为
+
+$$
+D^*_G(x) = \frac{p_\text{data}(x)}{p_\text{data}(x) + p_g(x)}
+$$
+
+（只需在 $p_\text{data}$ 与 $p_g$ 的支撑集的并集上定义，其余地方 $D$ 取什么都不影响 $V$。）
+
+这个结果很直观：在某个位置，真实数据的密度占比越高，判别器越应该判它为真。
+
+### 2.5 代回去：GAN 在最小化 JS 散度
+
+把 $D^*_G$ 代回 $V$，得到生成器真正面对的目标 $C(G) = \max_D V(D,G)$：
+
+$$
+C(G) = \mathbb{E}_{x\sim p_\text{data}}\Big[\log \frac{p_\text{data}(x)}{p_\text{data}(x)+p_g(x)}\Big] + \mathbb{E}_{x\sim p_g}\Big[\log \frac{p_g(x)}{p_\text{data}(x)+p_g(x)}\Big]
+$$
+
+记两者的平均分布 $m = \tfrac12(p_\text{data}+p_g)$。在每个对数里分子分母同乘以 $\tfrac12$，即 $\frac{p}{p+q} = \frac12\cdot\frac{p}{m}$：
+
+$$
+\begin{aligned}
+C(G) &= \mathbb{E}_{p_\text{data}}\Big[\log \frac{p_\text{data}}{m} - \log 2\Big] + \mathbb{E}_{p_g}\Big[\log \frac{p_g}{m} - \log 2\Big] \\
+&= -\log 4 + \mathrm{KL}\big(p_\text{data}\,\|\,m\big) + \mathrm{KL}\big(p_g\,\|\,m\big) \\
+&= -\log 4 + 2\,\mathrm{JS}\big(p_\text{data}\,\|\,p_g\big)
+\end{aligned}
+$$
+
+其中 Jensen–Shannon 散度定义为
+
+$$
+\mathrm{JS}(p\,\|\,q) = \tfrac12\mathrm{KL}\big(p\,\|\,m\big) + \tfrac12\mathrm{KL}\big(q\,\|\,m\big), \qquad m=\tfrac{p+q}{2}
+$$
+
+JS 散度是对称的、非负的、有界的：$0\le \mathrm{JS}\le\log 2$，并且当且仅当两个分布相等时为 0。由此得到原论文的核心结论：
+
+> **在判别器总是最优的理想情况下，训练生成器等价于最小化 $p_\text{data}$ 与 $p_g$ 之间的 JS 散度。** $C(G)$ 的全局最小值为 $-\log 4$，当且仅当 $p_g = p_\text{data}$ 时取到，此时 $D^*(x)\equiv\tfrac12$。
+
+这就是常说的 GAN 的**纳什均衡**：生成器已经完美复刻了数据分布，判别器在每个点上都只能输出 $\tfrac12$，任何一方单独改变策略都无法获益。
+
+原论文还给出一个收敛性命题：如果 $G$ 和 $D$ 有足够的容量，每一步都先把 $D$ 训到最优，再沿着降低 $C(G)$ 的方向更新 $p_g$，那么 $p_g$ 收敛到 $p_\text{data}$。理由是 $C(G)$ 作为 $p_g$ 的泛函是凸的。不过这个命题的前提在实践中都不成立：我们优化的是网络参数而不是 $p_g$ 本身，判别器也不可能每一步都训到最优。这为后面的各种训练问题埋下了伏笔。
+
+### 2.6 Non-saturating loss：实践中真正用的生成器损失
+
+按 minimax 目标，生成器应当最小化 $\log(1-D(G(z)))$。但这在训练早期几乎不起作用。
+
+**原因：梯度饱和。** 训练刚开始时 $G$ 很弱，生成的样本一眼就能看出是假的，$D(G(z))\approx 0$。把判别器写成 $D = \sigma(\ell)$，$\ell$ 是 sigmoid 之前的 logit，那么
+
+$$
+\frac{\partial}{\partial \ell}\log\big(1-\sigma(\ell)\big) = -\sigma(\ell) \;\approx\; 0 \qquad (\text{当 } D=\sigma(\ell)\approx 0)
+$$
+
+也就是说，**生成器最差的时候，它拿到的梯度最小**，几乎学不动。
+
+**解决办法：换一个目标。** 原论文建议让生成器改为最大化 $\log D(G(z))$，即最小化
+
+$$
+\mathcal{L}_G^{\text{NS}} = -\,\mathbb{E}_{z\sim p(z)}\big[\log D(G(z))\big]
+$$
+
+对应的梯度为
+
+$$
+\frac{\partial}{\partial \ell}\Big[-\log\sigma(\ell)\Big] = -\big(1-\sigma(\ell)\big) \;\approx\; -1 \qquad (\text{当 } D\approx 0)
+$$
+
+在生成器最差的区域，梯度反而最大。两种目标的不动点相同（都希望 $D(G(z))\to 1$），但训练动态好得多。这个版本叫 **non-saturating GAN**，几乎所有 GAN 实现里的"标准 GAN loss"指的都是它。
+
+换成这个目标以后，"GAN 在最小化 JS 散度"的说法也就不再严格成立了。Arjovsky & Bottou (2017) 证明，在最优判别器下，non-saturating 目标的梯度等于
+
+$$
+\nabla_\theta\Big[\mathrm{KL}\big(p_g\,\|\,p_\text{data}\big) - 2\,\mathrm{JS}\big(p_\text{data}\,\|\,p_g\big)\Big]
+$$
+
+的梯度。其中的**反向 KL** $\mathrm{KL}(p_g\|p_\text{data})$ 有一个重要特点：
+
+- 如果生成器在 $p_\text{data}\approx 0$ 的地方生成了样本（造出不像真的东西），惩罚趋于无穷大；
+- 如果生成器在 $p_\text{data}>0$ 的地方没有生成样本（漏掉了一个模式），惩罚几乎为 0。
+
+于是生成器宁可"只生成少数几种、但每种都很像"的样本，也不愿冒险覆盖所有模式。再加上 $-2\,\mathrm{JS}$ 这一项符号是负的，它在推着两个分布**分开**，进一步加剧不稳定。这从目标函数的角度解释了 GAN 为什么容易出现模式崩溃。
+
+### 2.7 小结：两套写法
+
+| | 判别器 | 生成器 |
+|---|---|---|
+| 原始 minimax | 最大化 $\mathbb{E}\log D(x) + \mathbb{E}\log(1-D(G(z)))$ | 最小化 $\mathbb{E}\log(1-D(G(z)))$ |
+| Non-saturating | 同上 | 最小化 $-\mathbb{E}\log D(G(z))$ |
+
+## 3. GAN 的架构
+
+一个典型的 GAN 包含以下组件：
+
+- **输入噪声向量 $z$**：低维随机向量，从高斯分布或均匀分布中采样，是生成多样性的唯一来源。不同的 $z$ 对应不同的输出。
+- **生成器**：把 $z$ 映射到数据空间。对图像来说，通常先用全连接层把 $z$ 变成一个小尺寸、多通道的特征图，再用一串转置卷积（反卷积）逐步上采样，通道数逐步减少，最后输出图像尺寸，用 $\tanh$ 把像素值压到 $[-1,1]$。
+- **判别器**：结构和生成器大致镜像。用一串步长为 2 的卷积逐步下采样，通道数逐步增加，最后展平，接一个输出单个标量的线性层，再经过 sigmoid 得到概率。
+- **损失函数**：如第 2 节所述，两个网络交替优化。
+
+以生成 $64\times64$ 彩色图像的 DCGAN 为例，两个网络的张量形状变化如下：
+
+```
+生成器 G                                  判别器 D
+z: 100                                    x: 3 × 64 × 64
+ │ 线性层 + reshape                         │ Conv(stride 2) + LeakyReLU
+1024 × 4 × 4                              128 × 32 × 32
+ │ ConvTranspose(stride 2) + BN + ReLU      │ Conv(stride 2) + BN + LeakyReLU
+512 × 8 × 8                               256 × 16 × 16
+ │ ConvTranspose(stride 2) + BN + ReLU      │ Conv(stride 2) + BN + LeakyReLU
+256 × 16 × 16                             512 × 8 × 8
+ │ ConvTranspose(stride 2) + BN + ReLU      │ Conv(stride 2) + BN + LeakyReLU
+128 × 32 × 32                             1024 × 4 × 4
+ │ ConvTranspose(stride 2) + Tanh           │ 展平 + 线性层 + Sigmoid
+3 × 64 × 64                               1 个标量 D(x) ∈ (0, 1)
+```
+
+整个系统连起来是这样的：
+
+```
+          z ~ p(z)
+             │
+             ▼
+        ┌─────────┐        G(z)
+        │    G    │ ───────────────┐
+        └─────────┘                ▼
+                              ┌─────────┐
+  x ~ p_data ────────────────▶│    D    │ ──▶ D(·) ∈ (0,1)：是真的概率
+                              └─────────┘
+                                   │
+            判别器损失：真样本→1，假样本→0
+            生成器损失：让 D(G(z))→1，梯度穿过 D 传回 G
+```
+
+生成器的梯度必须**穿过判别器**才能传回来，所以训练 $G$ 时 $D$ 的参数要冻结，但计算图要保留。
+
+## 4. 训练过程
+
+### 4.1 交替优化
+
+原论文的训练算法如下，每一轮迭代：
+
+1. **更新判别器**（重复 $k$ 步，原论文取 $k=1$）：
+   - 从噪声分布采样一批 $\{z^{(1)},\dots,z^{(m)}\}$，生成假样本 $G(z^{(i)})$；
+   - 从训练集采样一批真实样本 $\{x^{(1)},\dots,x^{(m)}\}$；
+   - 沿梯度上升方向更新 $D$：
+   $$
+   \nabla_{\theta_D}\frac1m\sum_{i=1}^m\Big[\log D\big(x^{(i)}\big) + \log\big(1-D(G(z^{(i)}))\big)\Big]
+   $$
+2. **更新生成器**（1 步）：
+   - 重新采样一批噪声 $\{z^{(i)}\}$；
+   - 固定 $D$，沿梯度下降方向更新 $G$（non-saturating 版本）：
+   $$
+   \nabla_{\theta_G}\frac1m\sum_{i=1}^m\Big[-\log D\big(G(z^{(i)})\big)\Big]
+   $$
+3. 重复，直到生成样本足够真实。
+
+为什么判别器可以多训几步？第 2.5 节的分析依赖"判别器接近最优"，判别器准一些，生成器拿到的梯度信号也更可靠。但判别器也不能太强，第 5 节会看到，太强的判别器反而会让生成器的梯度消失。这个平衡是 GAN 调参的核心难点。
+
+### 4.2 代码
+
+用 PyTorch 写一个训练步大致如下。判别器输出 logit，用 `BCEWithLogitsLoss` 把 sigmoid 和交叉熵合在一起算，数值更稳定。
+
+```python
+bce = nn.BCEWithLogitsLoss()
+
+for x_real in loader:
+    b = x_real.size(0)
+    ones, zeros = torch.ones(b, 1), torch.zeros(b, 1)
+
+    # 1) 更新判别器：真样本标 1，假样本标 0
+    z = torch.randn(b, z_dim)
+    x_fake = G(z).detach()                 # 不让梯度流回 G
+    loss_D = bce(D(x_real), ones) + bce(D(x_fake), zeros)
+    opt_D.zero_grad(); loss_D.backward(); opt_D.step()
+
+    # 2) 更新生成器：non-saturating loss，让 D 把假样本判为 1
+    z = torch.randn(b, z_dim)
+    loss_G = bce(D(G(z)), ones)            # 等于 -log D(G(z))
+    opt_G.zero_grad(); loss_G.backward(); opt_G.step()
+```
+
+注意第二步里 `bce(D(G(z)), ones)` 正是 $-\log D(G(z))$：生成器的损失就是"把假样本标成真"的分类损失。
+
+### 4.3 常见训练技巧
+
+GAN 的训练对超参数非常敏感，社区积累了一批经验做法：
+
+- **优化器**：Adam，学习率 $2\times10^{-4}$，$\beta_1 = 0.5$（而不是默认的 0.9），这是 DCGAN 给出的配置，沿用至今。
+- **两个网络用不同学习率**：TTUR（two time-scale update rule）让判别器学习率大于生成器，并给出了收敛到局部纳什均衡的条件。
+- **单边标签平滑**：把真实样本的标签从 1 改成 0.9，防止判别器过度自信、输出饱和。只平滑真实样本这一侧，因为平滑假样本会把 $D^*$ 推向错误的位置。
+- **输入归一化**：把图像缩放到 $[-1,1]$，与生成器最后的 $\tanh$ 对应。
+- **监控**：两个网络的 loss 互相牵制，看 loss 曲线很难判断训练好坏，通常定期把同一批固定噪声 $z$ 的生成结果画出来，同时计算 FID 等指标（见 5.4 节）。
+
+## 5. 挑战
+
+GAN 生成的样本质量很高，但训练出了名地难。主要问题有四个。
+
+### 5.1 梯度消失
+
+**直觉上的说法**：判别器太强时，它对所有假样本都输出接近 0 的值，而且对假样本的微小变化不敏感，生成器拿不到有用的梯度。
+
+**更本质的原因**在于 JS 散度本身。真实图像分布 $p_\text{data}$ 集中在高维空间中的一个低维流形上（"自然图像"在所有可能像素组合中只占极小一部分）；$p_g$ 是一个低维噪声 $z$ 经过 $G$ 映射出来的，也只落在一个低维流形上。两个高维空间中的低维流形，几乎必然**不相交或只在测度为零的集合上相交**。
+
+而当两个分布的支撑集不重叠时，在 $p_\text{data}>0$ 的地方 $p_g=0$，反之亦然，于是
+
+$$
+\mathrm{JS}(p_\text{data}\,\|\,p_g) = \log 2
+$$
+
+**不管 $p_g$ 离 $p_\text{data}$ 是近是远，JS 散度都是同一个常数**，它的梯度为零。这时存在一个完美的判别器，能把两边百分之百分开，生成器从原始目标里得不到任何方向信息。
+
+一个具体的例子（来自 WGAN 论文）：在二维平面上，真实分布是竖线 $\{0\}\times[0,1]$ 上的均匀分布，生成分布是竖线 $\{\theta\}\times[0,1]$ 上的均匀分布。
+
+- $\theta\ne0$ 时 $\mathrm{JS}=\log2$，$\theta=0$ 时 $\mathrm{JS}=0$，函数在 $\theta=0$ 处跳变，其余地方梯度为零；
+- $\mathrm{KL}$ 在 $\theta\ne0$ 时直接是 $+\infty$；
+- 而两个分布之间的 Wasserstein 距离是 $|\theta|$，随 $\theta$ 连续变化，处处有梯度指向 $\theta=0$。
+
+这个例子就是 WGAN 的出发点（见 6.2 节）。
+
+### 5.2 模式崩溃（Mode Collapse）
+
+生成器可能只生成极其相似的少数几种样本，而无法覆盖真实数据的多样性。比如在 MNIST 上训练，生成器只会写"1"和"7"，或者生成的人脸看起来都是同一个人。
+
+成因可以从两个角度理解：
+
+- **目标函数的角度**：第 2.6 节已经说明，non-saturating 损失里含有反向 KL，它重罚"造假"而轻罚"漏模式"。目标函数只要求"生成的东西像真的"，并不要求"覆盖真实分布的所有模式"。
+- **博弈动态的角度**：minimax 和 maximin 并不等价。理想中应当是"先让 $D$ 最优，再优化 $G$"，但交替梯度更新更像"先固定 $D$，让 $G$ 找到当前 $D$ 最容易被骗的那一点"。生成器于是把所有样本都挪到这一点上；判别器随后学会拒绝这一点，生成器又整体跳到另一个点。如此循环，生成器在不同模式之间来回跳，而不是同时覆盖它们。
+
+常见的缓解方法：
+
+- **Minibatch discrimination**：让判别器能看到一个 batch 内样本之间的相似度，生成器如果总产出相似样本，就很容易被识破；
+- **Feature matching**：让生成样本在判别器中间层上的特征统计量匹配真实样本，而不是直接最大化判别器输出；
+- **Unrolled GAN**：更新生成器时，往前"展开"判别器接下来的若干步更新，让生成器考虑到判别器的反应，避免短视；
+- **PacGAN**：把多个样本打包后一起送入判别器；
+- 换用 Wasserstein 距离等对分布重叠不敏感的目标。
+
+### 5.3 训练不稳定
+
+由于两个网络在对抗训练，二者的参数会互相追逐，很可能长期振荡而不收敛。
+
+即使在最简单的博弈上，交替梯度下降也不一定收敛。考虑 $\min_x\max_y\; xy$，唯一的均衡点是 $(0,0)$。同时做梯度更新：
+
+$$
+x \leftarrow x - \eta\, y, \qquad y \leftarrow y + \eta\, x
+$$
+
+可以验证每一步之后 $x^2+y^2$ 都会变成原来的 $(1+\eta^2)$ 倍，所以参数绕着均衡点**螺旋向外**发散，而不是收敛。GAN 的参数空间要复杂得多，但同样存在这种"旋转"成分。这说明 GAN 的训练本质上是在找鞍点，而不是找极小值，普通的梯度下降并不是为此设计的。
+
+### 5.4 没有好的训练指标，也没有似然
+
+GAN 没有显式密度，无法像 VAE 或 Flow 那样报告测试集上的对数似然；两个网络的 loss 又互相抵消，曲线本身不反映生成质量。实践中依赖外部指标：
+
+- **Inception Score (IS)**：用预训练的 Inception 分类器 $p(y\mid x)$ 衡量。好的样本应当让分类器很确定（$p(y\mid x)$ 尖锐），而所有样本合起来应当覆盖很多类别（$p(y)=\mathbb{E}_x p(y\mid x)$ 平坦）：
+$$
+\mathrm{IS} = \exp\Big(\mathbb{E}_{x\sim p_g}\big[\mathrm{KL}\big(p(y\mid x)\,\|\,p(y)\big)\big]\Big)
+$$
+越高越好。缺点是不和真实数据比较，只看生成样本本身。
+- **Fréchet Inception Distance (FID)**：把真实样本和生成样本分别送进 Inception 网络，取某一层特征，各自拟合一个高斯 $\mathcal{N}(\mu_r,\Sigma_r)$、$\mathcal{N}(\mu_g,\Sigma_g)$，计算两个高斯之间的 Fréchet 距离：
+$$
+\mathrm{FID} = \|\mu_r-\mu_g\|^2 + \mathrm{Tr}\Big(\Sigma_r + \Sigma_g - 2\big(\Sigma_r\Sigma_g\big)^{1/2}\Big)
+$$
+越低越好。它同时反映质量和多样性，是后来图像生成领域最常用的指标，扩散模型的论文也沿用至今。
+
+## 6. 主要扩展
+
+针对上面的问题，研究者提出了大量改进。按解决的问题大致分为四类。
+
+### 6.1 架构：DCGAN
+
+DCGAN（Radford et al., 2016）第一次让 GAN 在图像上稳定可用，它给出的是一套**架构经验**，而不是新的目标函数：
+
+- 用步长卷积（判别器）和转置卷积（生成器）代替池化层，让网络自己学习下采样和上采样；
+- 两个网络都使用 BatchNorm，但生成器输出层和判别器输入层不用；
+- 去掉卷积之后的全连接隐藏层；
+- 生成器内部用 ReLU，输出层用 $\tanh$；判别器全部用 LeakyReLU。
+
+DCGAN 还展示了生成器隐空间的**向量算术**：例如"戴眼镜的男人"的平均 $z$，减去"不戴眼镜的男人"，再加上"不戴眼镜的女人"，生成的是"戴眼镜的女人"。这说明 $z$ 空间学到了有语义的结构。
+
+### 6.2 目标函数：WGAN 与 WGAN-GP
+
+**Wasserstein 距离。** WGAN（Arjovsky et al., 2017）把 JS 散度换成 Wasserstein-1 距离，也叫推土机距离（Earth Mover's Distance）：
+
+$$
+W(p_\text{data}, p_g) = \inf_{\gamma\in\Pi(p_\text{data},\,p_g)} \mathbb{E}_{(x,y)\sim\gamma}\big[\|x-y\|\big]
+$$
+
+$\Pi$ 是所有边际分别为 $p_\text{data}$ 和 $p_g$ 的联合分布（运输方案）。直观地说，把 $p_g$ 看成一堆土，$p_\text{data}$ 看成要填的坑，$W$ 就是把土搬过去所需的最小"土量 × 距离"。即使两个分布完全不重叠，它也会随着二者距离的缩短而连续减小，正如 5.1 节例子里的 $|\theta|$。
+
+**对偶形式。** 上式的下确界没法直接算。Kantorovich–Rubinstein 对偶把它变成
+
+$$
+W(p_\text{data}, p_g) = \sup_{\|f\|_L\le 1}\; \mathbb{E}_{x\sim p_\text{data}}\big[f(x)\big] - \mathbb{E}_{x\sim p_g}\big[f(x)\big]
+$$
+
+上确界取遍所有 1-Lipschitz 函数 $f$。于是可以用一个神经网络 $f_w$ 来近似这个 $f$，它不再输出概率，而是输出一个任意实数分数，所以改称 **critic**（评论家）而不是判别器。训练目标变为：
+
+$$
+\max_{w}\; \mathbb{E}_{x\sim p_\text{data}}\big[f_w(x)\big] - \mathbb{E}_{z\sim p(z)}\big[f_w(G(z))\big], \qquad
+\min_G\; -\mathbb{E}_{z\sim p(z)}\big[f_w(G(z))\big]
+$$
+
+和标准 GAN 相比：去掉了 sigmoid 和 log；critic 的 loss 近似 Wasserstein 距离，**loss 曲线终于能反映生成质量**；critic 训得越好，给生成器的梯度越准，不再有"判别器太强导致梯度消失"的问题，所以通常每更新一次生成器，critic 更新 5 次。
+
+**怎么保证 Lipschitz。** 原始 WGAN 用**权重裁剪**：每次更新后把 critic 的所有参数截断到 $[-c,c]$（如 $c=0.01$），并用 RMSProp 训练。这种做法很粗糙：$c$ 太大收敛慢，太小梯度消失，而且会让 critic 的表达力退化成很简单的函数。
+
+WGAN-GP（Gulrajani et al., 2017）改用**梯度惩罚**。1-Lipschitz 等价于梯度范数处处不超过 1，而最优 critic 在真假样本之间的连线上梯度范数恰好为 1。于是在真假样本的随机插值点 $\hat x = \epsilon x + (1-\epsilon)G(z)$，$\epsilon\sim U[0,1]$ 上加惩罚：
+
+$$
+\mathcal{L}_\text{critic} = \mathbb{E}\big[f_w(G(z))\big] - \mathbb{E}\big[f_w(x)\big] + \lambda\,\mathbb{E}_{\hat x}\Big[\big(\|\nabla_{\hat x} f_w(\hat x)\|_2 - 1\big)^2\Big]
+$$
+
+通常 $\lambda=10$，critic 里不用 BatchNorm（因为惩罚是针对单个样本的梯度）。WGAN-GP 大幅提升了训练稳定性，对架构选择也不再那么敏感。
+
+### 6.3 其他目标函数与正则化
+
+- **LSGAN**：把交叉熵换成最小二乘。判别器最小化 $\tfrac12\mathbb{E}\big[(D(x)-1)^2\big] + \tfrac12\mathbb{E}\big[D(G(z))^2\big]$，生成器最小化 $\tfrac12\mathbb{E}\big[(D(G(z))-1)^2\big]$。离决策边界很远但被判为真的假样本仍会受到惩罚，缓解了梯度饱和。
+- **f-GAN**：说明 GAN 的思路可以推广到任意 $f$-散度（KL、反向 KL、JS、$\chi^2$ 等），原始 GAN 只是其中一个特例。
+- **Hinge loss**：判别器最小化 $\mathbb{E}\big[\max(0,1-D(x))\big] + \mathbb{E}\big[\max(0,1+D(G(z)))\big]$，生成器最小化 $-\mathbb{E}\big[D(G(z))\big]$。SNGAN、BigGAN 等大模型都用它。
+- **谱归一化（SNGAN）**：把判别器每一层的权重除以它的最大奇异值 $W \leftarrow W/\sigma(W)$（用幂迭代近似），使每层都是 1-Lipschitz，从而整个判别器的 Lipschitz 常数受控。实现简单，几乎没有额外开销，成为后来的标准配置。
+
+### 6.4 条件生成：CGAN
+
+原始 GAN 无法控制生成内容。条件 GAN（Mirza & Osindero, 2014）把条件 $y$（如类别标签）同时输入给生成器和判别器：
+
+$$
+\min_G\max_D\; \mathbb{E}_{x,y}\big[\log D(x\mid y)\big] + \mathbb{E}_{z,y}\big[\log\big(1-D(G(z\mid y)\mid y)\big)\big]
+$$
+
+判别器此时判断的不只是"这张图真不真"，而是"这张图是不是这个类别的真图"。后来的改进包括 AC-GAN（判别器额外输出一个分类结果）和 projection discriminator（把条件嵌入与判别器特征做内积）。条件生成的思想会在第 7 篇的 guidance 里以完全不同的形式再次出现。
+
+### 6.5 图像到图像翻译：Pix2Pix 与 CycleGAN
+
+- **Pix2Pix**：输入是一张图（如语义分割图、草图、白天的街景），输出是对应的另一张图。需要**成对**的训练数据。损失由条件 GAN 损失和重建损失两部分组成：
+$$
+\mathcal{L} = \mathcal{L}_\text{cGAN}(G,D) + \lambda\,\mathbb{E}\big[\|y - G(x)\|_1\big]
+$$
+L1 项保证输出与目标在整体上一致，GAN 项负责补充真实的高频细节。生成器用 U-Net，判别器用 PatchGAN（对图像的每个局部小块分别判真假）。
+- **CycleGAN**：处理**非成对**数据，比如有一堆马的照片和一堆斑马的照片，但没有"同一匹马的两种样子"。它同时训练两个生成器 $G: X\to Y$ 和 $F: Y\to X$，各配一个判别器，并加上**循环一致性损失**：
+$$
+\mathcal{L}_\text{cyc} = \mathbb{E}_{x}\big[\|F(G(x)) - x\|_1\big] + \mathbb{E}_{y}\big[\|G(F(y)) - y\|_1\big]
+$$
+意思是马变成斑马再变回来，应该还是原来那匹马。这个约束防止生成器随便输出一张与输入无关的斑马图。
+
+### 6.6 高质量生成：ProGAN、StyleGAN、BigGAN
+
+- **ProGAN**：渐进式增长，先在 $4\times4$ 分辨率上训练，再逐步加层到 $8\times8$、$16\times16$，直到 $1024\times1024$。先学整体结构，再学细节，训练更稳定。
+- **StyleGAN 系列**：不再把 $z$ 直接送进卷积网络，而是：
+  - 先用一个 8 层 MLP（映射网络）把 $z$ 映射到中间隐空间 $w$，$w$ 空间比 $z$ 空间更"解耦"；
+  - 生成网络从一个可学习的常数张量出发，$w$ 通过 AdaIN（自适应实例归一化）在每一层调制特征的均值和方差，粗分辨率层控制姿态、脸型等全局属性，细分辨率层控制发丝、肤色等细节；
+  - 每层额外注入随机噪声，负责毛孔、发丝位置这类随机细节；
+  - 训练时对不同层使用不同的 $w$（style mixing），进一步解耦。
+
+  StyleGAN2 用权重解调替代 AdaIN，消除了特征图里的"水滴"伪影。这一系列把人脸生成质量推到了肉眼几乎无法分辨的水平。
+- **BigGAN**：把类别条件 GAN 放大到 ImageNet 规模（大 batch、大模型、谱归一化、hinge loss）。它提出的**截断技巧**（truncation trick）值得一提：采样时只从截断的正态分布里取 $z$，截断阈值越小，样本质量越高、多样性越低。这和后面扩散模型里的 guidance scale 是同一种"质量换多样性"的旋钮。
+
+## 7. 应用领域
+
+- **图像生成**：生成逼真的人脸、动物、场景图像，如 StyleGAN 系列生成的人脸。
+- **图像翻译**：风格迁移、图像到图像的转换，如 Pix2Pix、CycleGAN，以及语义图生成真实场景（SPADE / GauGAN）。
+- **超分辨率**：SRGAN、ESRGAN 用对抗损失补出高频纹理。只用 L2 损失的超分会得到"所有可能结果的平均"，因而偏模糊；对抗损失鼓励输出落在真实图像的流形上，因而更清晰。
+- **图像编辑**：在 StyleGAN 的 $w$ 空间里找到对应年龄、表情、姿态的方向，沿方向移动即可编辑；配合 GAN inversion（把真实图像反推到隐空间）可以编辑真实照片。
+- **数据增强**：为数据稀缺的任务（如医学影像）生成额外的训练样本。
+- **文本生成**：如生成诗歌、故事。不过文本是离散的，生成器采样出 token 这一步不可导，判别器的梯度传不回来。SeqGAN 的做法是把判别器的输出当作**奖励**，用策略梯度（REINFORCE）更新生成器，这其实是"用一个学出来的奖励模型做强化学习"的早期形式，和后来 LLM 的 RLHF 思路相通。实际效果上，文本 GAN 始终没有超过最大似然训练的语言模型。
+- **作为其他模型的一个组件**：对抗损失并没有随着 GAN 的退潮而消失。VQGAN 在训练图像 tokenizer 时加入了 PatchGAN 判别器，Stable Diffusion 的自编码器同样用了对抗损失，用来让重建图像更锐利。第 2 篇会讲到这一点。
+
+## 8. 总结
+
+GAN 是一种创新的生成模型，它不写出密度，而是通过生成器和判别器的对抗训练，让判别器充当一个可学习的损失函数，从而生成高质量的样本。
+
+| | 内容 |
+|---|---|
+| 核心思想 | 生成器从噪声采样，判别器区分真假，二者做 minimax 博弈 |
+| 理论结论 | 判别器最优时，原始目标等价于最小化 JS 散度；均衡点为 $p_g=p_\text{data}$，$D\equiv\tfrac12$ |
+| 实践中的损失 | 生成器用 non-saturating loss $-\log D(G(z))$，避免早期梯度饱和 |
+| 主要问题 | 支撑集不重叠导致梯度消失；反向 KL 与博弈动态导致模式崩溃；鞍点优化导致振荡；没有似然 |
+| 主要改进 | DCGAN（架构）、WGAN / WGAN-GP / SNGAN（目标与 Lipschitz 约束）、CGAN（条件）、CycleGAN（非配对翻译）、StyleGAN / BigGAN（高质量） |
+| 优点 | 一次前向即可采样，速度快；样本锐利 |
+| 缺点 | 训练不稳定，容易漏模式，无法评估样本似然 |
+
+**在这个系列中的位置。** GAN 代表了"不写密度、隐式学习"的路线。后面要讲的 VAE 和扩散模型都回到了"写出一个概率模型、优化似然下界"的路线上：它们训练稳定、覆盖模式更全，但 VAE 样本偏模糊，扩散模型采样需要很多步。扩散模型最终在质量和多样性上超过了 GAN（第 7 篇会讲到 *Diffusion Models Beat GANs*）。**质量、多样性和采样速度**三者的取舍，会贯穿整个系列。
+
+## 参考文献
+
+- Goodfellow et al. *Generative Adversarial Nets.* NeurIPS 2014.
+- Mirza & Osindero. *Conditional Generative Adversarial Nets.* arXiv 2014.
+- Radford, Metz & Chintala. *Unsupervised Representation Learning with Deep Convolutional Generative Adversarial Networks.* ICLR 2016.
+- Nowozin, Cseke & Tomioka. *f-GAN: Training Generative Neural Samplers using Variational Divergence Minimization.* NeurIPS 2016.
+- Salimans et al. *Improved Techniques for Training GANs.* NeurIPS 2016.
+- Arjovsky & Bottou. *Towards Principled Methods for Training Generative Adversarial Networks.* ICLR 2017.
+- Arjovsky, Chintala & Bottou. *Wasserstein GAN.* ICML 2017.
+- Gulrajani et al. *Improved Training of Wasserstein GANs.* NeurIPS 2017.
+- Mao et al. *Least Squares Generative Adversarial Networks.* ICCV 2017.
+- Metz et al. *Unrolled Generative Adversarial Networks.* ICLR 2017.
+- Heusel et al. *GANs Trained by a Two Time-Scale Update Rule Converge to a Local Nash Equilibrium.* NeurIPS 2017.（TTUR 与 FID）
+- Isola et al. *Image-to-Image Translation with Conditional Adversarial Networks.* CVPR 2017.（Pix2Pix）
+- Zhu et al. *Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks.* ICCV 2017.（CycleGAN）
+- Yu et al. *SeqGAN: Sequence Generative Adversarial Nets with Policy Gradient.* AAAI 2017.
+- Ledig et al. *Photo-Realistic Single Image Super-Resolution Using a Generative Adversarial Network.* CVPR 2017.（SRGAN）
+- Karras et al. *Progressive Growing of GANs for Improved Quality, Stability, and Variation.* ICLR 2018.
+- Miyato et al. *Spectral Normalization for Generative Adversarial Networks.* ICLR 2018.
+- Brock, Donahue & Simonyan. *Large Scale GAN Training for High Fidelity Natural Image Synthesis.* ICLR 2019.（BigGAN）
+- Karras, Laine & Aila. *A Style-Based Generator Architecture for Generative Adversarial Networks.* CVPR 2019.
+- Karras et al. *Analyzing and Improving the Image Quality of StyleGAN.* CVPR 2020.

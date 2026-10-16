@@ -186,6 +186,13 @@ p { margin: 0; }
 
 .pnote { color: var(--muted); font-size: 0.82rem; }
 
+/* blog list */
+.blist { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
+.blist li { display: grid; gap: 4px; }
+.bmeta { font-family: var(--f-mono); font-size: 0.78rem; color: var(--muted); }
+.bsum { color: var(--muted); font-size: 0.94rem; max-width: 64ch; }
+.empty { color: var(--muted); }
+
 /* writing */
 .post { display: grid; gap: 6px; padding: 22px; border-radius: 12px; border: 1px dashed var(--line); }
 .post .status { font-family: var(--f-mono); font-size: 0.74rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
@@ -334,13 +341,15 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
 
     <section id="blog">
       <h2><span lang="en">Blog</span><span lang="zh">博客</span></h2>
-      <article class="post">
-        <span class="status"><span lang="en">In progress</span><span lang="zh">撰写中</span></span>
-        <h3><span lang="en">From imitation to on-policy distillation: how LLM post-training evolved</span><span lang="zh">从模仿到在线蒸馏：大模型后训练是怎么演进的</span></h3>
-        <p lang="en">Each method fixes what the last one couldn't: preference signal, training cost, sparse rewards, and finally token-level credit.</p>
-        <p lang="zh">每一代方法都在解决上一代解决不了的问题：偏好信号、训练成本、稀疏奖励，最后是 token 级的信用分配。</p>
-        <div class="chain">SFT → PPO → DPO → GRPO → OPD</div>
-      </article>
+      <!-- BLOG:START -->
+      <ul class="blist">
+        <li>
+          <p class="ptitle"><a href="blog/generative-models/gan/"><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></a></p>
+          <p class="bmeta">2026-10-16 · 从 GAN 到 Diffusion · #1</p>
+          <p class="bsum" lang="en">GANs learn to sample from a data distribution without ever writing down its density. This post covers the generator and discriminator, derives the minimax objective, the optimal discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks through architecture and training, and analyzes vanishing gradients, mode collapse and unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN, CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.</p>
+        </li>
+      </ul>
+      <!-- BLOG:END -->
     </section>
 
     <footer><span lang="en">Last updated October 2026.</span><span lang="zh">最后更新：2026 年 10 月。</span></footer>
