@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Guidance：让扩散模型听指令 · Jiaoyang Ruan</title>
+<meta name="description" content="Conditional generation needs the score of p(x|y). Bayes&#x27; rule splits it into an unconditional score plus a classifier gradient. This post derives classifier guidance both from the discrete DDPM step (a Taylor expansion that shifts the Gaussian mean) and from the score view, explains the guidance scale as sampling from a sharpened distribution, and then derives classifier-free guidance, its training with condition dropout, the fidelity–diversity trade-off, and practical fixes such as dynamic thresholding, CFG rescale, guidance intervals and negative prompts. It ends with how text-to-image systems use CFG and the link between guidance and KL-regularized RL.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">从 GAN 到 Diffusion · 第 7 篇</p>
+    <h1>Guidance：让扩散模型听指令</h1>
+    <p class="subtitle">Guidance: Steering Diffusion Models Toward a Condition</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">生成模型</span><span class="tag">Diffusion</span><span class="tag">Classifier Guidance</span><span class="tag">Classifier-Free Guidance</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#0-从无条件到有条件">0. 从无条件到有条件</a></li>
+<li><a href="#1-classifier-guidance">1. Classifier Guidance</a><ul>
+<li><a href="#11-贝叶斯拆分">1.1 贝叶斯拆分</a></li>
+<li><a href="#12-从-ddpm-的一步推出来">1.2 从 DDPM 的一步推出来</a></li>
+<li><a href="#13-ddim-等确定性采样器怎么办">1.3 DDIM 等确定性采样器怎么办</a></li>
+<li><a href="#14-引导强度-68从一个锐化的分布中采样">1.4 引导强度 $s$：从一个"锐化"的分布中采样</a></li>
+<li><a href="#15-分类器怎么训练">1.5 分类器怎么训练</a></li>
+<li><a href="#16-结果扩散模型第一次超过-gan">1.6 结果：扩散模型第一次超过 GAN</a></li>
+<li><a href="#17-局限">1.7 局限</a></li>
+</ul>
+</li>
+<li><a href="#2-classifier-free-guidancecfg">2. Classifier-Free Guidance（CFG）</a><ul>
+<li><a href="#21-不要分类器隐式分类器">2.1 不要分类器：隐式分类器</a></li>
+<li><a href="#22-一个网络同时学两种-score">2.2 一个网络同时学两种 score</a></li>
+<li><a href="#23-cfg-在采样什么分布">2.3 CFG 在采样什么分布</a></li>
+<li><a href="#24-保真度与多样性的权衡">2.4 保真度与多样性的权衡</a></li>
+<li><a href="#25-针对大-133-的修补">2.5 针对大 $w$ 的修补</a></li>
+<li><a href="#26-负向提示与组合条件">2.6 负向提示与组合条件</a></li>
+</ul>
+</li>
+<li><a href="#3-为什么-cfg-成了标配">3. 为什么 CFG 成了标配</a></li>
+<li><a href="#4-一个延伸视角guidance-与强化学习">4. 一个延伸视角：Guidance 与强化学习</a></li>
+<li><a href="#5-小结">5. 小结</a></li>
+<li><a href="#系列回顾">系列回顾</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="0-从无条件到有条件">0. 从无条件到有条件</h2>
+<p>DDPM 提出的扩散模型已经非常强大了，但短板也很明显：<strong>没有办法按照指令控制模型生成指定的图像。</strong> 前面几篇的模型都是<strong>无条件</strong>的：从一个随机噪声出发，生成一张"像训练数据"的图，但生成什么完全由随机噪声决定。在 ImageNet 上训练的模型，你没法要求它"画一只金毛"；在人脸数据上训练的模型，你也没法指定"戴眼镜、短发"。</p>
+<p>实际应用里我们几乎总想控制生成内容：指定类别、给一段文字描述、给一张草图或深度图。<strong>Guidance</strong>（引导）技术就是用来<strong>引导扩散模型生成指定条件的图像</strong>。</p>
+<p>用第 5、6 篇的语言，条件生成需要的是<strong>条件分布的 score</strong>：</p>
+<p>$$
+\nabla_{x_t}\log p_t(x_t\mid y)
+$$</p>
+<p>把它代入反向 SDE 或概率流 ODE，就能从 $p(x\mid y)$ 中采样。问题是怎么得到它。</p>
+<p>最直接的做法是训练一个<strong>条件网络</strong> $\epsilon_\theta(x_t,t,y)$，把条件 $y$ 当作额外输入（比如类别嵌入加到时间嵌入上，或者文本特征通过交叉注意力注入）。这确实可行，但实践中发现，单纯这样训练出来的条件模型，生成的样本和条件<strong>贴合得不够紧</strong>：类别特征不够鲜明，文本描述的细节常常被忽略。</p>
+<p>Guidance 技术的目标就是在<strong>采样时</strong>加强条件的作用，并提供一个旋钮来控制加强的程度。这一篇讲两种最重要的方法：</p>
+<ul>
+<li><strong>Classifier Guidance</strong>（Dhariwal &amp; Nichol, 2021, <em>Diffusion Models Beat GANs on Image Synthesis</em>）：用一个额外训练的分类器的梯度来引导；</li>
+<li><strong>Classifier-Free Guidance</strong>（Ho &amp; Salimans, 2021, <em>Classifier-Free Diffusion Guidance</em>）：不需要分类器，用同一个网络的条件输出和无条件输出之差来引导。</li>
+</ul>
+<h2 id="1-classifier-guidance">1. Classifier Guidance</h2>
+<h3 id="11-贝叶斯拆分">1.1 贝叶斯拆分</h3>
+<p>由贝叶斯公式</p>
+<p>$$
+p(x_t\mid y) = \frac{p(y\mid x_t)\,p(x_t)}{p(y)}
+$$</p>
+<p>两边取对数，再对 $x_t$ 求梯度。$p(y)$ 与 $x_t$ 无关，梯度为零，消失：</p>
+<p>$$
+\nabla_{x_t}\log p(x_t\mid y) = \underbrace{\nabla_{x_t}\log p(x_t)}_{\text{无条件 score}} + \underbrace{\nabla_{x_t}\log p(y\mid x_t)}_{\text{分类器梯度}}
+$$</p>
+<p>这个式子说明：<strong>一个无条件扩散模型，加上一个分类器，就能做条件生成。</strong></p>
+<ul>
+<li>第一项由已经训练好的无条件扩散模型提供，它负责让样本"像一张真实的图"；</li>
+<li>第二项是分类器 $p_\phi(y\mid x_t)$ 对输入的梯度，它告诉我们：<strong>怎样改动 $x_t$，能让它更像类别 $y$</strong>。</li>
+</ul>
+<p>这和第 5 篇的 score 思想一脉相承：score 是一个指向高密度区域的向量场，条件 score 就是在原来的向量场上，再叠加一个指向"更像类别 $y$"的方向。</p>
+<h3 id="12-从-ddpm-的一步推出来">1.2 从 DDPM 的一步推出来</h3>
+<p>上面是 score 视角下的推导。Dhariwal &amp; Nichol 的论文还给出了一个从 DDPM 离散采样步骤出发的推导，能更具体地看到 guidance 是怎样改变每一步采样的。</p>
+<p>DDPM 的反向一步是一个高斯：$p_\theta(x_t\mid x_{t+1}) = \mathcal{N}(\mu,\Sigma)$，其中 $\mu = \mu_\theta(x_{t+1},t+1)$，$\Sigma = \Sigma_\theta(x_{t+1},t+1)$。现在想要以 $y$ 为条件的反向一步。可以证明（论文附录），条件反向过程满足</p>
+<p>$$
+p_{\theta,\phi}(x_t\mid x_{t+1},y) = Z\cdot p_\theta(x_t\mid x_{t+1})\;p_\phi(y\mid x_t)
+$$</p>
+<p>$Z$ 是归一化常数。两项取对数：</p>
+<p>$$
+\log p_\theta(x_t\mid x_{t+1}) = -\frac12(x_t-\mu)^\top\Sigma^{-1}(x_t-\mu) + C
+$$</p>
+<p>$p_\phi(y\mid x_t)$ 一般不是高斯，没法直接相乘。但反向一步的方差 $\Sigma$ 很小（步数多时每一步只挪动一点点），在 $p_\theta(x_t\mid x_{t+1})$ 有概率质量的那一小块区域里，$\log p_\phi(y\mid x_t)$ 的曲率远小于 $\Sigma^{-1}$，可以用<strong>一阶泰勒展开</strong>在 $x_t=\mu$ 处近似：</p>
+<p>$$
+\log p_\phi(y\mid x_t) \approx \log p_\phi(y\mid x_t)\big|_{x_t=\mu} + (x_t-\mu)^\top g, \qquad g = \nabla_{x_t}\log p_\phi(y\mid x_t)\big|_{x_t=\mu}
+$$</p>
+<p>两者相加，并配方：</p>
+<p>$$
+\begin{aligned}
+\log\big(p_\theta(x_t\mid x_{t+1})\,p_\phi(y\mid x_t)\big)
+&amp;\approx -\frac12(x_t-\mu)^\top\Sigma^{-1}(x_t-\mu) + (x_t-\mu)^\top g + C_1 \\
+&amp;= -\frac12(x_t-\mu-\Sigma g)^\top\Sigma^{-1}(x_t-\mu-\Sigma g) + \frac12 g^\top\Sigma g + C_1 \\
+&amp;= \log\mathcal{N}\big(x_t;\;\mu+\Sigma g,\;\Sigma\big) + C_2
+\end{aligned}
+$$</p>
+<p>（展开第二行的平方即可验证与第一行相等。）结论非常简洁：</p>
+<blockquote>
+<p><strong>条件反向一步仍然是一个高斯，方差不变，只是均值沿着分类器梯度移动了 $\Sigma g$。</strong></p>
+</blockquote>
+<p>再给梯度乘上一个引导强度 $s$，就得到论文的 <strong>Algorithm 1</strong>（classifier guided diffusion sampling）：</p>
+<ol>
+<li>输入：类别标签 $y$，引导强度 $s$</li>
+<li>$x_T\sim\mathcal{N}(0,I)$</li>
+<li><strong>for</strong> $t = T,\dots,1$ <strong>do</strong></li>
+<li>$\mu,\Sigma\leftarrow\mu_\theta(x_t),\Sigma_\theta(x_t)$</li>
+<li>$x_{t-1}\sim\mathcal{N}\big(\mu + s\,\Sigma\,\nabla_{x_t}\log p_\phi(y\mid x_t),\;\Sigma\big)$</li>
+<li><strong>end for</strong></li>
+<li><strong>return</strong> $x_0$</li>
+</ol>
+<h3 id="13-ddim-等确定性采样器怎么办">1.3 DDIM 等确定性采样器怎么办</h3>
+<p>上面的推导依赖于"反向一步是一个方差很小的高斯"，对 DDIM 这类确定性采样器不适用。这时用 score 视角更方便。</p>
+<p>由第 5 篇，噪声预测和 score 的关系是 $\nabla_{x_t}\log p(x_t) = -\frac{\epsilon_\theta(x_t)}{\sqrt{1-\bar\alpha_t}}$。代入 1.1 节的贝叶斯拆分：</p>
+<p>$$
+\nabla_{x_t}\log\big(p(x_t)\,p(y\mid x_t)\big) = -\frac{1}{\sqrt{1-\bar\alpha_t}}\,\epsilon_\theta(x_t) + \nabla_{x_t}\log p_\phi(y\mid x_t)
+$$</p>
+<p>把右边重新写成"$-\frac{1}{\sqrt{1-\bar\alpha_t}}$ 乘以某个噪声预测"的形式，就得到一个<strong>新的噪声预测</strong> $\hat\epsilon$：</p>
+<p>$$
+\hat\epsilon(x_t) = \epsilon_\theta(x_t) - \sqrt{1-\bar\alpha_t}\;\nabla_{x_t}\log p_\phi(y\mid x_t)
+$$</p>
+<p>然后在任何采样器（DDPM、DDIM、ODE 求解器）里，把 $\epsilon_\theta$ 换成 $\hat\epsilon$ 即可。加上引导强度 $s$，就是论文的 <strong>Algorithm 2</strong>（classifier guided DDIM sampling）：</p>
+<ol>
+<li>输入：类别标签 $y$，引导强度 $s$</li>
+<li>$x_T\sim\mathcal{N}(0,I)$</li>
+<li><strong>for</strong> $t = T,\dots,1$ <strong>do</strong></li>
+<li>$\hat\epsilon\leftarrow\epsilon_\theta(x_t) - s\sqrt{1-\bar\alpha_t}\;\nabla_{x_t}\log p_\phi(y\mid x_t)$</li>
+<li>$x_{t-1}\leftarrow\sqrt{\bar\alpha_{t-1}}\Big(\frac{x_t - \sqrt{1-\bar\alpha_t}\,\hat\epsilon}{\sqrt{\bar\alpha_t}}\Big) + \sqrt{1-\bar\alpha_{t-1}}\;\hat\epsilon$</li>
+<li><strong>end for</strong></li>
+<li><strong>return</strong> $x_0$</li>
+</ol>
+<h3 id="14-引导强度-68从一个锐化的分布中采样">1.4 引导强度 $s$：从一个"锐化"的分布中采样</h3>
+<p>为什么要额外乘一个 $s$？论文发现，如果直接用 $s=1$ 去引导一个无条件模型，生成的图像虽然在分类器看来属于类别 $y$ 的概率有所提高（约 50%），但人眼看来往往并不像这个类别。把 $s$ 调大到 10 左右，样本才变得具有鲜明的类别特征。</p>
+<p>乘上 $s$ 之后，引导后的 score 是</p>
+<p>$$
+\nabla_{x_t}\log p(x_t) + s\,\nabla_{x_t}\log p_\phi(y\mid x_t) = \nabla_{x_t}\log\Big(p(x_t)\,p_\phi(y\mid x_t)^s\Big)
+$$</p>
+<p>也就是说，我们实际上是在从这样一个分布中采样：</p>
+<p>$$
+\tilde p(x\mid y) \propto p(x)\;p_\phi(y\mid x)^{s}
+$$</p>
+<p>$s&gt;1$ 时，$p_\phi(y\mid x)^s$ 比 $p_\phi(y\mid x)$ 更"尖锐"：分类器很确信属于 $y$ 的样本被进一步放大，分类器不太确定的样本被大幅压低。结果是：</p>
+<ul>
+<li><strong>样本更符合类别、更"典型"、视觉质量更高</strong>（IS 上升，precision 上升）；</li>
+<li><strong>多样性下降</strong>（recall 下降），过大时样本会趋同，FID 先降后升。</li>
+</ul>
+<p>所以 $s$ 是一个在<strong>保真度（fidelity）和多样性（diversity）之间取舍</strong>的旋钮。这和第 1 篇 BigGAN 的截断技巧是同一类东西，只是 guidance 提供了一个更有原则的实现方式。</p>
+<h3 id="15-分类器怎么训练">1.5 分类器怎么训练</h3>
+<p>分类器 $p_\phi(y\mid x_t)$ 的输入是<strong>加了噪声的</strong> $x_t$，而且噪声水平从几乎干净到几乎纯噪声都有。所以：</p>
+<ul>
+<li>不能直接用现成的 ImageNet 分类器（它只见过干净图像），需要<strong>在加噪数据上专门训练</strong>一个分类器；</li>
+<li>训练方式和扩散模型类似：随机采 $x_0$ 和 $t$，构造 $x_t = \sqrt{\bar\alpha_t}\,x_0+\sqrt{1-\bar\alpha_t}\,\epsilon$，用交叉熵训练分类器预测 $x_0$ 的标签；</li>
+<li>分类器也以时间步 $t$ 为输入。论文的分类器结构是扩散模型 U-Net 的下采样部分（编码器），最后在 $8\times8$ 的特征图上做注意力池化，输出类别 logits。</li>
+</ul>
+<p>classifier guidance 不仅能用于无条件模型，也能用于<strong>条件模型</strong>：在条件模型 $\epsilon_\theta(x_t,t,y)$ 的基础上再加分类器梯度，效果最好。</p>
+<h3 id="16-结果扩散模型第一次超过-gan">1.6 结果：扩散模型第一次超过 GAN</h3>
+<p>论文同时对扩散模型的 U-Net 结构做了一系列改进（称为 ADM，Ablated Diffusion Model）：</p>
+<ul>
+<li>加深加宽网络，增加注意力头数；</li>
+<li>在 $32\times32$、$16\times16$、$8\times8$ 三个分辨率上都使用注意力；</li>
+<li>使用 BigGAN 风格的残差块做上下采样；</li>
+<li><strong>自适应组归一化</strong>（AdaGN）：把时间嵌入和类别嵌入通过 $\text{AdaGN}(h,y) = y_s\,\text{GroupNorm}(h) + y_b$ 注入每个残差块，$y_s,y_b$ 由嵌入经线性层得到。</li>
+</ul>
+<p>配合 classifier guidance，ADM 在 ImageNet $256\times256$ 类别条件生成上取得了 4.59 的 FID，与上采样模型组合后达到 3.94，超过了当时最好的 GAN（BigGAN-deep，6.95）。论文的标题 <em>Diffusion Models Beat GANs on Image Synthesis</em> 正是由此而来。这是扩散模型发展的一个里程碑：它第一次在 GAN 最擅长的高质量图像生成上，以更好的多样性取得了更好的质量。</p>
+<h3 id="17-局限">1.7 局限</h3>
+<p>classifier guidance 有几个明显的缺点：</p>
+<ul>
+<li><strong>需要额外训练一个分类器</strong>，而且必须在各个噪声水平的加噪数据上训练，不能用现成的分类器；</li>
+<li><strong>每步采样都要额外跑一次分类器的前向和反向传播</strong>，计算代价增加；</li>
+<li><strong>分类器梯度可能是"对抗性"的</strong>：分类器的梯度不一定对应语义上有意义的方向。沿着它走，图像可能只是在像素上被微调到"让分类器满意"，而人眼看来并没有更像这个类别。这和对抗样本是同一个问题；</li>
+<li><strong>条件形式受限</strong>：类别标签可以训练分类器，但当条件 $y$ 是一段自由文本时，很难训练一个对应的"分类器" $p(y\mid x_t)$。（GLIDE 尝试过用在加噪图像上训练的 CLIP 模型代替分类器，效果不如下面的 classifier-free guidance。）</li>
+</ul>
+<p>这些缺点促使了 classifier-free guidance 的提出。</p>
+<h2 id="2-classifier-free-guidancecfg">2. Classifier-Free Guidance（CFG）</h2>
+<h3 id="21-不要分类器隐式分类器">2.1 不要分类器：隐式分类器</h3>
+<p>Ho &amp; Salimans (2021) 注意到，分类器的梯度本身也可以用贝叶斯公式<strong>反过来</strong>表示：</p>
+<p>$$
+\nabla_{x_t}\log p(y\mid x_t) = \nabla_{x_t}\log p(x_t\mid y) - \nabla_{x_t}\log p(x_t)
+$$</p>
+<p><strong>条件 score 减去无条件 score，就是一个隐式的分类器梯度。</strong> 如果我们同时有条件模型和无条件模型，就不需要单独训练分类器了。</p>
+<p>把它代回 classifier guidance 的式子，引导强度记为 $w$：</p>
+<p>$$
+\nabla_{x_t}\log p(x_t) + w\Big[\nabla_{x_t}\log p(x_t\mid y) - \nabla_{x_t}\log p(x_t)\Big]
+$$</p>
+<p>用 $s_\theta = -\epsilon_\theta/\sqrt{1-\bar\alpha_t}$ 换成噪声预测的形式（两边的系数 $-1/\sqrt{1-\bar\alpha_t}$ 相同，直接约掉）：</p>
+<p>$$
+\tilde\epsilon(x_t,t,y) = \epsilon_\theta(x_t,t,\varnothing) + w\Big[\epsilon_\theta(x_t,t,y) - \epsilon_\theta(x_t,t,\varnothing)\Big]
+$$</p>
+<p>其中 $\epsilon_\theta(x_t,t,\varnothing)$ 表示无条件预测（条件为"空"），$\epsilon_\theta(x_t,t,y)$ 表示条件预测。</p>
+<ul>
+<li>$w=0$：$\tilde\epsilon = \epsilon_\theta(\varnothing)$，无条件生成；</li>
+<li>$w=1$：$\tilde\epsilon = \epsilon_\theta(y)$，普通的条件生成，没有额外引导；</li>
+<li>$w&gt;1$：从无条件预测出发，<strong>沿"条件方向" $\epsilon_\theta(y)-\epsilon_\theta(\varnothing)$ 外推</strong>，超过条件预测本身，加强条件的作用。</li>
+</ul>
+<blockquote>
+<p><strong>关于记号。</strong> 原论文的写法是 $\tilde\epsilon = (1+w)\,\epsilon_\theta(x_t,y) - w\,\epsilon_\theta(x_t)$，其中 $w=0$ 对应普通条件生成。它和上式只差记法：原文的 $w$ 等于上式的 $w-1$。Stable Diffusion 等实现中的 <code>guidance_scale</code> 对应上式的 $w$，常用值在 5 到 10 之间（Stable Diffusion 默认 7.5）。读不同论文时要留意这一点。</p>
+</blockquote>
+<h3 id="22-一个网络同时学两种-score">2.2 一个网络同时学两种 score</h3>
+<p>条件模型和无条件模型从哪里来？分别训练两个网络当然可以，但 CFG 的做法更巧妙：<strong>用同一个网络同时学会两者。</strong></p>
+<p>训练时，以一定概率 $p_\text{uncond}$（通常 10% 到 20%）把条件 $y$ 替换成一个特殊的"空条件" $\varnothing$，其余时候正常输入 $y$。对类别条件，$\varnothing$ 可以是一个专门的"空类别"嵌入；对文本条件，通常用空字符串的文本嵌入。这样，网络在见到 $\varnothing$ 时学的是无条件 score，见到 $y$ 时学的是条件 score。</p>
+<pre><code class="language-python">def cfg_training_loss(model, x0, y, p_uncond=0.1):
+    b = x0.size(0)
+    t = torch.randint(0, T, (b,))
+    eps = torch.randn_like(x0)
+    ab = alphas_bar[t].view(b, 1, 1, 1)
+    x_t = ab.sqrt() * x0 + (1 - ab).sqrt() * eps
+    drop = torch.rand(b) &lt; p_uncond
+    y = torch.where(drop, NULL_LABEL, y)          # 条件 dropout
+    return F.mse_loss(model(x_t, t, y), eps)
+</code></pre>
+<p>采样时，每一步做两次前向，一次带条件，一次不带：</p>
+<pre><code class="language-python">@torch.no_grad()
+def cfg_eps(model, x_t, t, y, w):
+    eps_c = model(x_t, t, y)
+    eps_u = model(x_t, t, NULL_LABEL)
+    return eps_u + w * (eps_c - eps_u)
+</code></pre>
+<p>得到的 $\tilde\epsilon$ 可以代入任何采样器（DDPM、DDIM、DPM-Solver 等）。实践中通常把条件和无条件两份输入拼成一个 batch 一起算，所以实际开销约为无引导时的两倍。</p>
+<p>和 classifier guidance 相比，CFG 的优势是：</p>
+<ul>
+<li><strong>不需要额外的分类器</strong>，也不需要在加噪数据上训练任何其他东西；</li>
+<li><strong>训练只多了一行代码</strong>（条件 dropout），几乎没有额外成本；</li>
+<li>引导方向来自生成模型自己，不存在"对抗性梯度"的问题，引导效果更自然。</li>
+</ul>
+<h3 id="23-cfg-在采样什么分布">2.3 CFG 在采样什么分布</h3>
+<p>和 1.4 节一样，可以问：CFG 实际上在从什么分布中采样？引导后的 score 为</p>
+<p>$$
+(1-w)\,\nabla\log p(x_t) + w\,\nabla\log p(x_t\mid y) = \nabla\log\Big(p(x_t)^{1-w}\;p(x_t\mid y)^{w}\Big)
+$$</p>
+<p>又因为 $p(x_t\mid y)\propto p(x_t)\,p(y\mid x_t)$，</p>
+<p>$$
+p(x_t)^{1-w}\,p(x_t\mid y)^w \propto p(x_t)\;p(y\mid x_t)^{w}
+$$</p>
+<p>所以 CFG 和 classifier guidance 在目标上是一样的：都是从 $p(x)\,p(y\mid x)^w$ 这个"锐化"的分布中采样，只是 CFG 中的 $p(y\mid x)$ 是由生成模型<strong>隐式</strong>定义的分类器。</p>
+<p>需要说明的是，这只是一个直观的理解，并不严格成立：对每个噪声水平 $t$ 分别做 $p_t(x)\,p_t(y\mid x)^w$ 的锐化，得到的这一族分布，并不是对 $t=0$ 时的锐化分布逐步加噪的结果。所以 CFG 采样的分布并不严格等于 $p(x)\,p(y\mid x)^w$。但这个近似足以解释 CFG 的主要行为。</p>
+<h3 id="24-保真度与多样性的权衡">2.4 保真度与多样性的权衡</h3>
+<p>$w$ 越大，样本越贴合条件、细节越锐利、图文越一致，但多样性越低。在 FID–IS 曲线上，随着 $w$ 增大，IS 持续上升，FID 先下降后上升：存在一个最佳的 $w$ 让 FID 最低，再往上就是在用多样性换贴合度。Ho &amp; Salimans 在 ImageNet $64\times64$ 上的实验显示，一个很小的引导强度就能显著改善 FID，更大的引导强度给出更高的 IS 和更"典型"的样本。</p>
+<p>$w$ 过大时，还会出现明显的失真：</p>
+<ul>
+<li><strong>颜色过饱和、对比度过高</strong>：外推使得预测的 $\hat x_0$ 超出正常像素范围；</li>
+<li><strong>纹理失真、细节过度锐化</strong>，看起来"油腻"；</li>
+<li><strong>构图单一</strong>：同一个提示词生成的图像越来越像。</li>
+</ul>
+<h3 id="25-针对大-133-的修补">2.5 针对大 $w$ 的修补</h3>
+<p><strong>动态阈值（Dynamic Thresholding，Imagen）。</strong> 图像像素值的合法范围是 $[-1,1]$，但大 $w$ 下每一步预测的 $\hat x_0$ 可能远远超出这个范围，误差在后续步骤中被放大，导致过饱和。"静态阈值"直接把 $\hat x_0$ 裁剪到 $[-1,1]$，但会让大量像素卡在边界上。动态阈值的做法是：每一步取 $\hat x_0$ 绝对值的某个分位数 $s$（比如 99.5%），若 $s&gt;1$，就把 $\hat x_0$ 裁剪到 $[-s,s]$ 再除以 $s$：</p>
+<p>$$
+s = \max\Big(1,\;\mathrm{percentile}\big(|\hat x_0|,\,99.5\%\big)\Big), \qquad \hat x_0 \leftarrow \frac{\mathrm{clip}(\hat x_0,\,-s,\,s)}{s}
+$$</p>
+<p>这样既防止了像素值越界，又不会让大量像素饱和。Imagen 借此可以使用很大的 $w$，得到图文一致性更好、同时更自然的图像。（这个方法只适用于像素空间的扩散；在 Stable Diffusion 这种隐空间扩散中，隐变量没有固定的取值范围。）</p>
+<p><strong>CFG Rescale。</strong> Lin et al. (2024) 发现大 $w$ 下的过曝问题，与引导后输出的标准差被放大有关。修正办法是把 CFG 的输出重新缩放到条件输出的标准差：</p>
+<p>$$
+x_\text{rescaled} = x_\text{cfg}\cdot\frac{\mathrm{std}(x_\text{pos})}{\mathrm{std}(x_\text{cfg})}, \qquad x_\text{final} = \phi\,x_\text{rescaled} + (1-\phi)\,x_\text{cfg}
+$$</p>
+<p>其中 $x_\text{pos}$ 是条件预测，$x_\text{cfg}$ 是 CFG 的结果，$\phi$ 通常取 0.7，用来避免图像变得过于平淡。</p>
+<p><strong>只在部分时间步引导。</strong> 第 3 篇提到，扩散模型的生成是由粗到细的：高噪声阶段决定构图和整体结构，低噪声阶段补充纹理和细节。研究发现，在高噪声阶段施加强引导会让构图趋同、损害多样性；在低噪声阶段引导则作用不大。只在中间一段噪声水平上施加引导，可以在保持贴合度的同时显著改善多样性和 FID。</p>
+<p><strong>引导蒸馏。</strong> 每一步跑两次前向使推理成本翻倍。一些模型通过蒸馏，把"带某个 $w$ 的 CFG 输出"直接蒸馏进单个网络，把 $w$ 作为额外输入，推理时只需一次前向。</p>
+<h3 id="26-负向提示与组合条件">2.6 负向提示与组合条件</h3>
+<p><strong>负向提示（Negative Prompt）。</strong> 把公式中的空条件 $\varnothing$ 换成一个"不想要的描述" $y^-$：</p>
+<p>$$
+\tilde\epsilon = \epsilon_\theta(x_t,t,y^-) + w\Big[\epsilon_\theta(x_t,t,y) - \epsilon_\theta(x_t,t,y^-)\Big]
+$$</p>
+<p>这就是在向 $y$ 靠近的同时，<strong>远离</strong> $y^-$。外推的起点从"无条件"换成了"负向条件"，外推方向变成了"从 $y^-$ 指向 $y$"。比如正向提示"一只猫的照片"，负向提示"模糊、低质量、变形"，可以有效抑制这些不想要的特征。这就是文生图工具中 negative prompt 的原理。</p>
+<p><strong>组合多个条件。</strong> 隐式分类器梯度可以叠加。对多个条件 $y_1,\dots,y_n$：</p>
+<p>$$
+\tilde\epsilon = \epsilon_\theta(\varnothing) + \sum_{i=1}^n w_i\Big[\epsilon_\theta(y_i) - \epsilon_\theta(\varnothing)\Big]
+$$</p>
+<p>对应于从 $p(x)\prod_i p(y_i\mid x)^{w_i}$ 中采样，相当于对多个条件做"与"操作。$w_i$ 取负值则对应"非"操作，负向提示就是它的一个特例。</p>
+<h2 id="3-为什么-cfg-成了标配">3. 为什么 CFG 成了标配</h2>
+<p>GLIDE、DALL·E 2、Imagen、Stable Diffusion 等文生图模型几乎都用 CFG。GLIDE 的论文专门比较了 CLIP guidance（用 CLIP 模型的梯度做 classifier guidance）和 CFG，人类评估者明显更偏好 CFG 生成的图像。原因很实际：</p>
+<ul>
+<li><strong>条件可以是任意形式</strong>：类别、文本嵌入、图像、深度图、姿态、音频，只要能把它"置空"，就能用 CFG；</li>
+<li><strong>不需要额外模型</strong>：一个网络、一种训练方式，只多了一个条件 dropout；</li>
+<li><strong>一个旋钮控制取舍</strong>：$w$ 可以在推理时随时调整，不需要重新训练；</li>
+<li><strong>效果显著</strong>：对于文生图，不加引导的样本往往和文本只是"沾边"，加上 CFG 后图文一致性大幅提升。</li>
+</ul>
+<p>在文生图模型中，文本条件的典型注入方式是：用一个预训练文本编码器（CLIP 的文本编码器或 T5）把提示词编码成一串向量，再通过 U-Net（或 DiT）中的<strong>交叉注意力</strong>层注入：图像特征作为 query，文本特征作为 key 和 value。空条件 $\varnothing$ 就是空字符串经过同一个编码器得到的向量。</p>
+<p>后来的视频生成、音频生成、3D 生成中，CFG 也几乎都是默认配置。</p>
+<h2 id="4-一个延伸视角guidance-与强化学习">4. 一个延伸视角：Guidance 与强化学习</h2>
+<p>把 classifier guidance 的目标分布再写一遍：</p>
+<p>$$
+\tilde p(x) \propto p(x)\,p(y\mid x)^s
+$$</p>
+<p>如果把 $\log p(y\mid x)$ 看作一个<strong>奖励</strong> $r(x)$，衡量"$x$ 有多符合条件 $y$"，这个分布可以写成</p>
+<p>$$
+\tilde p(x) \propto p(x)\,\exp\big(s\cdot r(x)\big)
+$$</p>
+<p>这个形式在强化学习里非常熟悉。考虑 <strong>KL 正则化的强化学习目标</strong>：在一个参考分布 $\pi_\text{ref}$ 附近，寻找一个能最大化期望奖励的分布 $\pi$，同时用 KL 惩罚不要偏离参考分布太远：</p>
+<p>$$
+\max_\pi\;\mathbb{E}_{x\sim\pi}\big[r(x)\big] - \beta\,\mathrm{KL}\big(\pi\,\|\,\pi_\text{ref}\big)
+$$</p>
+<p>把它整理一下：</p>
+<p>$$
+\mathbb{E}_\pi[r] - \beta\,\mathbb{E}_\pi\Big[\log\frac{\pi}{\pi_\text{ref}}\Big] = -\beta\,\mathbb{E}_\pi\Big[\log\frac{\pi(x)}{\pi_\text{ref}(x)\exp(r(x)/\beta)}\Big] = -\beta\,\mathrm{KL}\Big(\pi\,\Big\|\,\frac{\pi_\text{ref}\,e^{r/\beta}}{Z}\Big) + \beta\log Z
+$$</p>
+<p>$Z = \int\pi_\text{ref}(x)\,e^{r(x)/\beta}dx$ 与 $\pi$ 无关。KL 在两个分布相等时取最小值 0，所以最优解是</p>
+<p>$$
+\pi^*(x) = \frac{1}{Z}\,\pi_\text{ref}(x)\,\exp\Big(\frac{r(x)}{\beta}\Big)
+$$</p>
+<p>和 guidance 的目标分布<strong>形式完全相同</strong>：参考分布对应预训练扩散模型的 $p(x)$，引导强度 $s$ 对应 $1/\beta$。两者都是<strong>在参考分布的基础上，按奖励的指数重新加权</strong>。</p>
+<p>从这个角度看：</p>
+<ul>
+<li><strong>guidance 是在推理时做的、不改动模型权重的奖励对齐</strong>：每一步采样时，用奖励的梯度把样本推向高奖励区域；</li>
+<li><strong>RLHF、DPO 则是把同样的目标写进模型参数</strong>：通过训练让模型本身直接生成高奖励的样本，推理时不再需要额外的引导。</li>
+</ul>
+<p>这条思路在扩散模型中也有很多发展：</p>
+<ul>
+<li>用任意可微的奖励（美学评分、文本匹配度、人类偏好模型）代替分类器做引导。由于奖励模型通常只在干净图像上定义，常用的近似是在每一步先估计 $\hat x_0(x_t)$，再计算 $\nabla_{x_t}r(\hat x_0(x_t))$。这也是很多"无需训练的逆问题求解"方法（比如第 5 篇的图像修补的推广）的思路；</li>
+<li>用强化学习直接微调扩散模型（如 DDPO 把去噪过程看成一个多步决策过程，用策略梯度优化），或者把 DPO 推广到扩散模型（Diffusion-DPO），把人类偏好直接写进模型参数。</li>
+</ul>
+<p>这条"参考分布 × 奖励的指数"的线索，会在后面的 LLM 强化学习系列里反复出现。</p>
+<h2 id="5-小结">5. 小结</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Classifier Guidance</th>
+<th>Classifier-Free Guidance</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心公式</td>
+<td>$\hat\epsilon = \epsilon_\theta - s\sqrt{1-\bar\alpha_t}\,\nabla\log p_\phi(y\mid x_t)$</td>
+<td>$\tilde\epsilon = \epsilon_\theta(\varnothing) + w[\epsilon_\theta(y) - \epsilon_\theta(\varnothing)]$</td>
+</tr>
+<tr>
+<td>额外模型</td>
+<td>需要在加噪数据上训练分类器</td>
+<td>不需要</td>
+</tr>
+<tr>
+<td>训练改动</td>
+<td>无（可用现成的无条件模型）</td>
+<td>条件 dropout</td>
+</tr>
+<tr>
+<td>每步代价</td>
+<td>1 次扩散前向 + 分类器前向和反向</td>
+<td>2 次扩散前向（可合并为一个 batch）</td>
+</tr>
+<tr>
+<td>条件形式</td>
+<td>主要是类别</td>
+<td>任意可以"置空"的条件</td>
+</tr>
+<tr>
+<td>目标分布（近似）</td>
+<td>$p(x)\,p_\phi(y\mid x)^s$</td>
+<td>$p(x)\,p(y\mid x)^w$，分类器是隐式的</td>
+</tr>
+<tr>
+<td>引导强度</td>
+<td>$s$</td>
+<td>$w$</td>
+</tr>
+<tr>
+<td>代表工作</td>
+<td>ADM（Diffusion Models Beat GANs）</td>
+<td>GLIDE、Imagen、Stable Diffusion</td>
+</tr>
+</tbody>
+</table>
+<p>几个要点：</p>
+<ul>
+<li><strong>条件 score = 无条件 score + 分类器梯度</strong>，这是所有 guidance 方法的出发点；</li>
+<li>在 DDPM 的离散步骤里，classifier guidance 就是<strong>把每一步高斯的均值沿分类器梯度移动 $s\Sigma g$</strong>；</li>
+<li>引导强度相当于从<strong>锐化的分布</strong> $p(x)\,p(y\mid x)^s$ 中采样，是保真度和多样性之间的旋钮；</li>
+<li>CFG 用<strong>条件与无条件预测之差</strong>代替分类器梯度，一个网络、一行代码，成为了今天几乎所有条件扩散模型的标配；</li>
+<li>guidance 与 KL 正则化强化学习的最优策略形式相同，可以看作<strong>推理时的奖励对齐</strong>。</li>
+</ul>
+<h2 id="系列回顾">系列回顾</h2>
+<p>到这里，"从 GAN 到 Diffusion"的主线就走完了：</p>
+<ol>
+<li><strong>GAN</strong> 不写密度，只学一个采样器，用判别器作为可学习的损失函数。样本锐利、采样快，但训练不稳定、容易模式崩溃。</li>
+<li><strong>VAE</strong> 写出隐变量模型，优化 ELBO，KL 正则让隐空间可以采样，但样本偏模糊；<strong>VQ-VAE</strong> 引入离散码本，成为后来视觉 tokenizer 的起点。</li>
+<li><strong>DDPM</strong> 把生成拆成很多小的去噪步骤，是一个编码器固定的分层 VAE，ELBO 化简为预测噪声。</li>
+<li><strong>DDIM</strong> 发现训练只依赖边际分布，换一个非马尔可夫的采样过程，实现确定性采样和跳步加速。</li>
+<li><strong>Score-based 模型</strong>从学习对数密度的梯度出发，用去噪分数匹配和退火朗之万动力学生成样本，与 DDPM 殊途同归。</li>
+<li><strong>SDE / ODE</strong> 用连续时间统一了前面所有方法：NCSN 和 DDPM 是两种 SDE，DDIM 是概率流 ODE 的欧拉离散化。</li>
+<li><strong>Guidance</strong> 让模型按条件生成，CFG 是今天文生图的核心机制。</li>
+</ol>
+<p>贯穿始终的是三条线索：<strong>似然下界</strong>（VAE 与 DDPM 的 ELBO）、<strong>噪声与 score 的等价</strong>（$s_\theta = -\epsilon_\theta/\sqrt{1-\bar\alpha_t}$），以及<strong>质量、多样性和速度的取舍</strong>。</p>
+<p>这个系列只覆盖了连续数据（图像）上的扩散。下一个系列"扩散语言模型"会讨论：当数据从连续的像素变成离散的 token，加噪和去噪该怎么重新定义。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Dhariwal &amp; Nichol. <em>Diffusion Models Beat GANs on Image Synthesis.</em> NeurIPS 2021.</li>
+<li>Ho &amp; Salimans. <em>Classifier-Free Diffusion Guidance.</em> NeurIPS 2021 Workshop on Deep Generative Models.</li>
+<li>Song et al. <em>Score-Based Generative Modeling through Stochastic Differential Equations.</em> ICLR 2021.</li>
+<li>Nichol et al. <em>GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models.</em> ICML 2022.</li>
+<li>Ramesh et al. <em>Hierarchical Text-Conditional Image Generation with CLIP Latents.</em> arXiv 2022.（DALL·E 2）</li>
+<li>Saharia et al. <em>Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding.</em> NeurIPS 2022.（Imagen）</li>
+<li>Rombach et al. <em>High-Resolution Image Synthesis with Latent Diffusion Models.</em> CVPR 2022.</li>
+<li>Liu et al. <em>Compositional Visual Generation with Composable Diffusion Models.</em> ECCV 2022.</li>
+<li>Chung et al. <em>Diffusion Posterior Sampling for General Noisy Inverse Problems.</em> ICLR 2023.</li>
+<li>Black et al. <em>Training Diffusion Models with Reinforcement Learning.</em> ICLR 2024.（DDPO）</li>
+<li>Wallace et al. <em>Diffusion Model Alignment Using Direct Preference Optimization.</em> CVPR 2024.</li>
+<li>Lin et al. <em>Common Diffusion Noise Schedules and Sample Steps are Flawed.</em> WACV 2024.（CFG rescale）</li>
+<li>Kynkäänniemi et al. <em>Applying Guidance in a Limited Interval Improves Sample and Distribution Quality in Diffusion Models.</em> NeurIPS 2024.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>

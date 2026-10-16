@@ -92,7 +92,7 @@ def page(p, body_html, toc_html):
     tags = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in p.get("tags", []))
     series = html.escape(str(p.get("series", "")))
     order = p.get("order")
-    kicker = f"{series} · 第 {order} 篇" if series and order is not None else series
+    kicker = (f"{series} · 系列导读" if order == 0 else f"{series} · 第 {order} 篇") if series and order is not None else series
     toc_block = (f'<details class="toc"><summary>目录 · Table of Contents</summary>{toc_html}</details>'
                  if "<li>" in toc_html else "")
     fields = dict(title=title, title_en=title_en, desc=desc, tags=tags, kicker=kicker,
@@ -128,7 +128,8 @@ def main():
         body_html, toc_html = render(p["body"])
         (dest / "index.html").write_text(page(p, body_html, toc_html), encoding="utf-8")
         print("built", dest.relative_to(ROOT))
-    posts.sort(key=lambda p: (str(p.get("date", "")), p.get("order") or 0), reverse=True)
+    # newest series first; within a series, reading order (overview first)
+    posts.sort(key=lambda p: (str(p.get("series", "")), p.get("order") or 0))
     s = INDEX.read_text(encoding="utf-8")
     i, j = s.index(START) + len(START), s.index(END)
     INDEX.write_text(s[:i] + "\n      " + blog_list(posts) + "\n      " + s[j:], encoding="utf-8")

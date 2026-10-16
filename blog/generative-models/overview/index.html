@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>从 GAN 到 Diffusion：系列导读 · Jiaoyang Ruan</title>
+<meta name="description" content="A reading guide to seven posts on deep generative models, organized around one question: how do we learn a distribution we can sample from when its normalizing constant is intractable?">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">从 GAN 到 Diffusion · 系列导读</p>
+    <h1>从 GAN 到 Diffusion：系列导读</h1>
+    <p class="subtitle">From GANs to Diffusion: Series Overview</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">生成模型</span><span class="tag">系列导读</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#这个系列在讲什么">这个系列在讲什么</a></li>
+<li><a href="#路线图">路线图</a></li>
+<li><a href="#篇目">篇目</a></li>
+<li><a href="#怎么读">怎么读</a></li>
+<li><a href="#贯穿全系列的三条线索">贯穿全系列的三条线索</a></li>
+<li><a href="#之后">之后</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="这个系列在讲什么">这个系列在讲什么</h2>
+<p>所有生成模型都在回答同一个问题：<strong>给定一批样本，怎样学到一个能采样的分布？</strong></p>
+<p>难点在于高维空间里的归一化常数。一个灵活的密度函数很容易写，但让它积分为 1 几乎不可能精确计算。这个系列的七篇文章，可以看成七种和归一化常数打交道的方式，以及它们如何一步步汇合到扩散模型。</p>
+<h2 id="路线图">路线图</h2>
+<pre><code>GAN ──────────────── 不写密度，只学采样器
+ │
+VAE / VQ-VAE ─────── 写出概率模型，优化似然下界（ELBO）
+ │
+DDPM ─────────────── 很多层的 VAE：编码器固定，ELBO 化为&quot;预测噪声&quot;
+ │        ╲
+DDIM       Score-based ── 学 log 密度的梯度，归一化常数自动消失
+ │        ╱
+SDE / ODE ────────── 连续时间统一：DDPM、NCSN、DDIM 都是特例
+ │
+Guidance ─────────── 按条件生成，文生图的核心机制
+</code></pre>
+<h2 id="篇目">篇目</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>文章</th>
+<th>一句话</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>GAN：用一场博弈学习数据分布</td>
+<td>最优判别器下，GAN 在最小化 JS 散度；这也是它难训的原因</td>
+</tr>
+<tr>
+<td>2</td>
+<td>从 AE 到 VAE 再到 VQ-VAE</td>
+<td>KL 正则让隐空间可以采样；离散码本是后来视觉 tokenizer 的起点</td>
+</tr>
+<tr>
+<td>3</td>
+<td>DDPM：一步步加噪，再一步步去噪</td>
+<td>前向闭式解 + 可解后验，ELBO 化简为噪声回归</td>
+</tr>
+<tr>
+<td>4</td>
+<td>DDIM：不重新训练，把 1000 步压到几十步</td>
+<td>训练只依赖边际分布，于是可以换一个确定、可跳步的采样过程</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Score-based 模型</td>
+<td>score 与归一化常数无关；预测 score 等于预测 DDPM 的噪声</td>
+</tr>
+<tr>
+<td>6</td>
+<td>SDE 与概率流 ODE</td>
+<td>VE/VP 两种 SDE 统一 NCSN 与 DDPM；ODE 带来可逆、似然和加速</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Guidance：让扩散模型听指令</td>
+<td>条件 score 的贝叶斯拆分；CFG 用一个网络完成引导</td>
+</tr>
+</tbody>
+</table>
+<h2 id="怎么读">怎么读</h2>
+<ul>
+<li><strong>只想理解扩散模型</strong>：从第 3 篇开始，读 3 → 4 → 7。</li>
+<li><strong>想搞清楚推导</strong>：按顺序读。第 2 篇的 ELBO 推导会在第 3 篇原样复用，第 5 篇的 score 会在第 6、7 篇反复出现。</li>
+<li><strong>前置知识</strong>：概率论基础（贝叶斯公式、高斯分布、KL 散度）和一点微积分。第 6 篇用到随机微分方程，但只需要直观理解。</li>
+</ul>
+<h2 id="贯穿全系列的三条线索">贯穿全系列的三条线索</h2>
+<ol>
+<li><strong>似然下界</strong>：VAE 的 ELBO 和 DDPM 的变分下界是同一件事。</li>
+<li><strong>噪声与 score</strong>：$s_\theta(x_t,t) = -\epsilon_\theta(x_t,t)/\sqrt{1-\bar\alpha_t}$，这条式子把 DDPM、NCSN、SDE 和 guidance 全部连在一起。</li>
+<li><strong>质量、多样性和速度的取舍</strong>：GAN 快但漏模式，DDPM 质量高但慢，DDIM 和 ODE 求解器用确定性换速度，guidance 用多样性换贴合度。</li>
+</ol>
+<h2 id="之后">之后</h2>
+<p>这个系列只覆盖连续数据（图像）上的扩散。下一个系列"扩散语言模型"会讨论 D3PM、SEDD、MDLM、RADD 等工作：当数据变成离散 token，加噪和去噪要怎么重新定义。</p>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>
