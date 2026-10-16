@@ -21,6 +21,13 @@ OUT = ROOT / "blog"
 INDEX = ROOT / "index.html"
 START, END = "<!-- BLOG:START -->", "<!-- BLOG:END -->"
 
+# Series shown on the Blog list, in this order: folder name -> (English name, Chinese name).
+# A folder not listed here still publishes, after these, under its front-matter series name.
+SERIES = {
+    "generative-models": ("From GANs to Diffusion", "从 GAN 到 Diffusion"),
+    "diffusion-lm": ("Diffusion Language Models", "扩散语言模型"),
+}
+
 
 def read_post(path):
     text = path.read_text(encoding="utf-8")
@@ -103,19 +110,36 @@ def page(p, body_html, toc_html):
     return out
 
 
+def entry(p):
+    summary = html.escape(" ".join(str(p.get("summary_en", "")).split()))
+    title_en = html.escape(str(p.get("title_en") or p.get("title")))
+    return f'''        <article class="entry">
+          <h4><span lang="en">{title_en}</span><span lang="zh">{html.escape(str(p.get("title")))}</span></h4>
+          <p class="entry-sum">{summary}</p>
+          <p class="entry-meta">{meta_line(p)}</p>
+          <a class="entry-link" href="{p["url"]}" aria-label="{title_en}"></a>
+        </article>'''
+
+
 def blog_list(posts):
     if not posts:
         return '<p class="empty"><span lang="en">Posts coming soon.</span><span lang="zh">文章即将上线。</span></p>'
-    rows = []
+    groups = {}
     for p in posts:
-        summary = html.escape(" ".join(str(p.get("summary_en", "")).split()))
-        rows.append(f'''        <article class="entry">
-          <h3><span lang="en">{html.escape(str(p.get("title_en") or p.get("title")))}</span><span lang="zh">{html.escape(str(p.get("title")))}</span></h3>
-          <p class="entry-sum">{summary}</p>
-          <p class="entry-meta">{meta_line(p)}</p>
-          <a class="entry-link" href="{p["url"]}" aria-label="{html.escape(str(p.get("title_en") or p.get("title")))}"></a>
-        </article>''')
-    return '<div class="entries">\n' + "\n".join(rows) + "\n      </div>"
+        groups.setdefault(p["series_dir"], []).append(p)
+    order = [d for d in SERIES if d in groups] + sorted(d for d in groups if d not in SERIES)
+    out = []
+    for d in order:
+        items = sorted(groups[d], key=lambda p: p.get("order") or 0)
+        fallback = str(items[0].get("series") or d)
+        en, zh = (html.escape(x) for x in SERIES.get(d, (fallback, fallback)))
+        out.append(f'''      <div class="series">
+        <h3 class="series-name"><span lang="en">{en}</span><span lang="zh">{zh}</span></h3>
+        <div class="entries">
+{chr(10).join(items and [entry(p) for p in items])}
+        </div>
+      </div>''')
+    return "\n".join(out).lstrip()
 
 
 def main():
@@ -128,8 +152,6 @@ def main():
         body_html, toc_html = render(p["body"])
         (dest / "index.html").write_text(page(p, body_html, toc_html), encoding="utf-8")
         print("built", dest.relative_to(ROOT))
-    # newest series first; within a series, reading order (overview first)
-    posts.sort(key=lambda p: (str(p.get("series", "")), p.get("order") or 0))
     s = INDEX.read_text(encoding="utf-8")
     i, j = s.index(START) + len(START), s.index(END)
     INDEX.write_text(s[:i] + "\n      " + blog_list(posts) + "\n      " + s[j:], encoding="utf-8")

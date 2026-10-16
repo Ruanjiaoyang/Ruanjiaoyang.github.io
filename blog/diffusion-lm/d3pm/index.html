@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>D3PM：把扩散模型搬到离散状态空间 · Jiaoyang Ruan</title>
+<meta name="description" content="Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the forward marginal and the closed-form posterior, compares uniform, absorbing ([MASK]), discretized Gaussian and embedding-based transition matrices, explains the noise schedules, the x_0-parameterization of the reverse process and the hybrid loss, and shows that BERT, autoregressive language models and generative masked language models are all special cases of discrete diffusion.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">扩散语言模型 · 第 1 篇</p>
+    <h1>D3PM：把扩散模型搬到离散状态空间</h1>
+    <p class="subtitle">D3PM: Diffusion Models in Discrete State Spaces</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">扩散语言模型</span><span class="tag">离散扩散</span><span class="tag">D3PM</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#0-为什么需要离散扩散">0. 为什么需要离散扩散</a></li>
+<li><a href="#1-基础框架">1. 基础框架</a><ul>
+<li><a href="#11-记号">1.1 记号</a></li>
+<li><a href="#12-前向过程乘转移矩阵">1.2 前向过程：乘转移矩阵</a></li>
+<li><a href="#13-边际分布转移矩阵的连乘">1.3 边际分布：转移矩阵的连乘</a></li>
+<li><a href="#14-后验贝叶斯公式">1.4 后验：贝叶斯公式</a></li>
+<li><a href="#15-和-ddpm-的对照">1.5 和 DDPM 的对照</a></li>
+</ul>
+</li>
+<li><a href="#2-前向过程转移矩阵的选择">2. 前向过程：转移矩阵的选择</a><ul>
+<li><a href="#21-均匀扩散uniform">2.1 均匀扩散（Uniform）</a></li>
+<li><a href="#22-吸收态扩散absorbing-state">2.2 吸收态扩散（Absorbing State）</a></li>
+<li><a href="#23-离散化高斯discretized-gaussian">2.3 离散化高斯（Discretized Gaussian）</a></li>
+<li><a href="#24-基于-token-嵌入距离token-embedding-distance">2.4 基于 Token 嵌入距离（Token Embedding Distance）</a></li>
+<li><a href="#25-小结">2.5 小结</a></li>
+</ul>
+</li>
+<li><a href="#3-噪声调度">3. 噪声调度</a></li>
+<li><a href="#4-反向过程与损失函数">4. 反向过程与损失函数</a><ul>
+<li><a href="#41-反向过程160-参数化">4.1 反向过程：$x_0$ 参数化</a></li>
+<li><a href="#42-变分下界">4.2 变分下界</a></li>
+<li><a href="#43-辅助损失">4.3 辅助损失</a></li>
+<li><a href="#44-训练与采样">4.4 训练与采样</a></li>
+</ul>
+</li>
+<li><a href="#5-与已有文本模型的联系">5. 与已有文本模型的联系</a><ul>
+<li><a href="#51-bert-是单步扩散模型">5.1 BERT 是单步扩散模型</a></li>
+<li><a href="#52-自回归模型也是离散扩散模型">5.2 自回归模型也是离散扩散模型</a></li>
+<li><a href="#53-生成式掩码语言模型也是扩散模型">5.3 生成式掩码语言模型也是扩散模型</a></li>
+</ul>
+</li>
+<li><a href="#6-实验与局限">6. 实验与局限</a></li>
+<li><a href="#7-小结">7. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="0-为什么需要离散扩散">0. 为什么需要离散扩散</h2>
+<p>上一个系列"从 GAN 到 Diffusion"里的扩散模型，处理的都是<strong>连续数据</strong>：图像的像素值（或者自编码器的隐变量）是实数，可以往上面加高斯噪声。前向过程 $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$ 就建立在"数据可以和高斯噪声相加"这个前提上。</p>
+<p>但很多数据本质上是<strong>离散</strong>的：</p>
+<ul>
+<li>文本由一个个 token 组成，每个 token 是词表 $\{1,\dots,K\}$ 中的一个类别；</li>
+<li>图像的像素值严格来说也是 $\{0,\dots,255\}$ 中的整数；</li>
+<li>分子图、代码、音乐的符号表示，也都是离散的。</li>
+</ul>
+<p>你没法给"猫"这个词加上 0.1 的高斯噪声。一种绕开的办法是把 token 映射到连续的嵌入空间，在嵌入上做高斯扩散（比如 Diffusion-LM），最后再"取整"回最近的 token。但这样做会带来嵌入空间与离散词表不匹配的问题，生成时还需要额外的舍入步骤。</p>
+<p>更直接的办法是：<strong>在离散空间里重新定义"加噪"</strong>。D3PM（Discrete Denoising Diffusion Probabilistic Models，Austin et al., 2021）就是这样做的。它的核心思想是：</p>
+<ul>
+<li>用一个<strong>马尔可夫转移矩阵</strong> $Q_t$ 代替高斯噪声，描述每一步一个类别以多大的概率变成另一个类别；</li>
+<li>转移矩阵可以自由设计，从而引入<strong>结构化的腐蚀过程</strong>（Structured Corruption Processes）：比如让 token 变成 [MASK]，或者让像素值只在相邻的灰度之间跳动，或者让词更容易变成语义相近的词。</li>
+</ul>
+<p>这一篇会看到，D3PM 的整套推导和 DDPM 几乎一一对应，只是把"高斯分布"换成了"分类分布"，把"加噪"换成了"乘转移矩阵"。更有意思的是，在这个框架下，<strong>BERT、自回归语言模型、掩码语言模型都可以看作离散扩散的特例</strong>。</p>
+<h2 id="1-基础框架">1. 基础框架</h2>
+<h3 id="11-记号">1.1 记号</h3>
+<p>先考虑一个<strong>标量</strong>离散随机变量 $x\in\{1,\dots,K\}$，比如序列中的一个 token。用 <strong>one-hot 行向量</strong>表示它：$x\in\{0,1\}^{1\times K}$，第 $k$ 位为 1 表示类别 $k$。</p>
+<p><strong>分类分布</strong>记为 $\mathrm{Cat}(x;p)$，其中 $p\in\Delta^{K-1}$ 是一个概率向量（每个元素非负、和为 1），$\mathrm{Cat}(x;p) = x\,p^\top$，即取出 $x$ 对应类别的那个概率。</p>
+<h3 id="12-前向过程乘转移矩阵">1.2 前向过程：乘转移矩阵</h3>
+<p>每一步的前向转移由一个 $K\times K$ 的<strong>转移矩阵</strong> $Q_t$ 描述：</p>
+<p>$$
+[Q_t]_{ij} = q(x_t = j\mid x_{t-1} = i)
+$$</p>
+<p>第 $i$ 行是"当前类别为 $i$ 时，下一步变成各个类别的概率"，所以每一行的和为 1（行随机矩阵）。用 one-hot 行向量写，前向一步为</p>
+<p>$$
+q(x_t\mid x_{t-1}) = \mathrm{Cat}\big(x_t;\; p = x_{t-1}Q_t\big)
+$$</p>
+<p>$x_{t-1}Q_t$ 是行向量乘矩阵，结果正好是 $Q_t$ 中第 $x_{t-1}$ 行，也就是从 $x_{t-1}$ 出发转移到各个类别的概率。</p>
+<p>对一个序列（或一张图），<strong>$Q_t$ 独立地作用在每个 token（或每个像素）上</strong>。也就是说，前向过程在不同位置之间是相互独立的：</p>
+<p>$$
+q(\boldsymbol{x}_t\mid\boldsymbol{x}_{t-1}) = \prod_{i=1}^{N} q\big([\boldsymbol{x}_t]_i\mid[\boldsymbol{x}_{t-1}]_i\big)
+$$</p>
+<p>下面的推导都针对单个位置，最后再把各位置的损失加起来。</p>
+<p>和 DDPM 一样，前向过程是一条马尔可夫链：</p>
+<p>$$
+q(x_{1:T}\mid x_0) = \prod_{t=1}^{T} q(x_t\mid x_{t-1})
+$$</p>
+<h3 id="13-边际分布转移矩阵的连乘">1.3 边际分布：转移矩阵的连乘</h3>
+<p>从 $x_0$ 出发走 $t$ 步，相当于连续乘 $t$ 个转移矩阵。定义</p>
+<p>$$
+\bar Q_t = Q_1 Q_2\cdots Q_t
+$$</p>
+<p>则</p>
+<p>$$
+q(x_t\mid x_0) = \mathrm{Cat}\big(x_t;\; p = x_0\bar Q_t\big)
+$$</p>
+<p>这对应 DDPM 中的闭式解 $q(x_t\mid x_0) = \mathcal{N}(\sqrt{\bar\alpha_t}\,x_0,(1-\bar\alpha_t)I)$：<strong>训练时不需要真的走 $t$ 步，可以从 $x_0$ 一步采出任意 $x_t$。</strong> 前提是 $\bar Q_t$ 能高效计算。对一般的矩阵，这需要存储和连乘 $K\times K$ 矩阵；但对第 2 节的几种设计，$\bar Q_t$ 都有简单的闭式解。</p>
+<h3 id="14-后验贝叶斯公式">1.4 后验：贝叶斯公式</h3>
+<p>和 DDPM 一样，为了计算 ELBO 中的 KL 项，需要前向过程的后验 $q(x_{t-1}\mid x_t,x_0)$。由贝叶斯公式和马尔可夫性：</p>
+<p>$$
+q(x_{t-1}\mid x_t, x_0) = \frac{q(x_t\mid x_{t-1}, x_0)\;q(x_{t-1}\mid x_0)}{q(x_t\mid x_0)} = \mathrm{Cat}\Big(x_{t-1};\; p = \frac{x_t Q_t^\top\odot x_0\bar Q_{t-1}}{x_0\bar Q_t x_t^\top}\Big)
+$$</p>
+<p>逐项解释：</p>
+<ul>
+<li><strong>分子第一项</strong> $x_tQ_t^\top$：这是 $q(x_t\mid x_{t-1})$ 作为 $x_{t-1}$ 的函数。$Q_t^\top$ 的第 $x_t$ 行就是 $Q_t$ 的第 $x_t$ 列，第 $i$ 个元素是 $q(x_t\mid x_{t-1}=i)$；</li>
+<li><strong>分子第二项</strong> $x_0\bar Q_{t-1}$：这是 $q(x_{t-1}\mid x_0)$，一个关于 $x_{t-1}$ 的概率向量；</li>
+<li>$\odot$ 是逐元素乘法（Hadamard 积），两者相乘就是 $q(x_t\mid x_{t-1})\,q(x_{t-1}\mid x_0)$ 对每个可能的 $x_{t-1}$ 的值；</li>
+<li><strong>分母</strong> $x_0\bar Q_tx_t^\top$ 是 $q(x_t\mid x_0)$，一个标量，也就是分子各元素之和，起归一化作用。</li>
+</ul>
+<p>所以后验同样有闭式解，而且只需要 $Q_t$、$\bar Q_{t-1}$、$\bar Q_t$ 三个矩阵。这正是 DDPM 中"给定 $x_0$ 后后验可解"的离散版本。</p>
+<h3 id="15-和-ddpm-的对照">1.5 和 DDPM 的对照</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>DDPM（连续）</th>
+<th>D3PM（离散）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态</td>
+<td>$x\in\mathbb{R}^d$</td>
+<td>$x\in\{1,\dots,K\}$（one-hot）</td>
+</tr>
+<tr>
+<td>前向一步</td>
+<td>$\mathcal{N}(\sqrt{1-\beta_t}\,x_{t-1},\beta_tI)$</td>
+<td>$\mathrm{Cat}(x_{t-1}Q_t)$</td>
+</tr>
+<tr>
+<td>边际</td>
+<td>$\mathcal{N}(\sqrt{\bar\alpha_t}\,x_0,(1-\bar\alpha_t)I)$</td>
+<td>$\mathrm{Cat}(x_0\bar Q_t)$</td>
+</tr>
+<tr>
+<td>后验</td>
+<td>配方得到的高斯</td>
+<td>贝叶斯公式得到的分类分布</td>
+</tr>
+<tr>
+<td>终点</td>
+<td>$\mathcal{N}(0,I)$</td>
+<td>$Q_t$ 的平稳分布</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-前向过程转移矩阵的选择">2. 前向过程：转移矩阵的选择</h2>
+<p>D3PM 的核心优势在于：<strong>可以通过设计 $Q_t$ 来控制数据被腐蚀的方式。</strong> 只需要满足两个条件，$Q_t$ 的形式可以非常灵活：</p>
+<ol>
+<li>$\bar Q_t$ 在 $t\to\infty$（或 $t=T$）时收敛到一个<strong>已知的平稳分布</strong>，这样生成时就知道从什么分布出发；</li>
+<li>$\bar Q_t$ 能<strong>高效计算</strong>，这样训练时可以一步采出 $x_t$。</li>
+</ol>
+<p>论文提出了以下几种结构化的转移矩阵。</p>
+<h3 id="21-均匀扩散uniform">2.1 均匀扩散（Uniform）</h3>
+<p>最基础的形式：每一步以概率 $\beta_t$ 把 token 重新采样为一个<strong>均匀随机</strong>的类别（可能还是它自己），否则保持不变。</p>
+<p>$$
+Q_t = (1-\beta_t)\,I + \frac{\beta_t}{K}\,\mathbb{1}\mathbb{1}^\top
+$$</p>
+<p>$\mathbb{1}$ 是全 1 列向量，$\mathbb{1}\mathbb{1}^\top/K$ 是所有元素都等于 $1/K$ 的矩阵。写成元素形式：</p>
+<p>$$
+[Q_t]_{ij} = \begin{cases} 1-\frac{K-1}{K}\beta_t &amp; i=j \\[4pt] \frac{1}{K}\beta_t &amp; i\ne j \end{cases}
+$$</p>
+<p><strong>边际的闭式解。</strong> 记 $U = \mathbb{1}\mathbb{1}^\top/K$，它满足 $U^2 = U$（因为 $\mathbb{1}^\top\mathbb{1} = K$）。于是两个这种形式的矩阵相乘：</p>
+<p>$$
+\big(aI + (1-a)U\big)\big(bI + (1-b)U\big) = ab\,I + \big(1-ab\big)\,U
+$$</p>
+<p>（$U$ 的系数为 $a(1-b) + (1-a)b + (1-a)(1-b) = 1-ab$。）所以形式在连乘下保持不变，系数相乘。记 $\bar\alpha_t = \prod_{s=1}^t(1-\beta_s)$：</p>
+<p>$$
+\bar Q_t = \bar\alpha_t\,I + (1-\bar\alpha_t)\,U
+$$</p>
+<p>意思是：经过 $t$ 步后，token 以概率 $\bar\alpha_t$ "从未被重新采样过"而保持原样，否则是均匀随机的。$\bar\alpha_t\to0$ 时，$\bar Q_t\to U$，<strong>平稳分布是词表上的均匀分布</strong>。这和 DDPM 中"信号以 $\sqrt{\bar\alpha_t}$ 衰减、最终变成标准高斯"是同一个结构。</p>
+<h3 id="22-吸收态扩散absorbing-state">2.2 吸收态扩散（Absorbing State）</h3>
+<p>引入一个特殊的<strong>吸收态</strong> $m$，比如 [MASK] token。每一步，未被 mask 的 token 以概率 $\beta_t$ 变成 [MASK]，否则保持不变；已经是 [MASK] 的 token 永远保持 [MASK]。</p>
+<p>$$
+Q_t = (1-\beta_t)\,I + \beta_t\,\mathbb{1}e_m^\top
+$$</p>
+<p>$e_m$ 是第 $m$ 位为 1 的 one-hot 列向量，$\mathbb{1}e_m^\top$ 是第 $m$ 列全为 1、其余为 0 的矩阵。写成元素形式：</p>
+<p>$$
+[Q_t]_{ij} = \begin{cases} 1 &amp; i=j=m \\ 1-\beta_t &amp; i=j\ne m \\ \beta_t &amp; j=m,\ i\ne m \\ 0 &amp; \text{其他} \end{cases}
+$$</p>
+<p>（第 $m$ 行：$(1-\beta_t)e_m^\top + \beta_te_m^\top = e_m^\top$，即 [MASK] 只能转移到 [MASK]，这就是"吸收"的含义。）</p>
+<p><strong>边际的闭式解。</strong> $\mathbb{1}e_m^\top$ 同样满足 $(\mathbb{1}e_m^\top)^2 = \mathbb{1}(e_m^\top\mathbb{1})e_m^\top = \mathbb{1}e_m^\top$，所以和均匀情形完全一样：</p>
+<p>$$
+\bar Q_t = \bar\alpha_t\,I + (1-\bar\alpha_t)\,\mathbb{1}e_m^\top
+$$</p>
+<p>即每个 token 以概率 $\bar\alpha_t$ 保持原样，以概率 $1-\bar\alpha_t$ 变成 [MASK]。<strong>平稳分布是全部集中在 [MASK] 上的点分布</strong>：充分加噪后，整个序列都是 [MASK]。</p>
+<p>吸收态扩散有几个特别好的性质，在文本上效果也最好：</p>
+<ul>
+<li>一个 token 一旦被 mask，就不会再变回别的词，前向过程只有"被遮住"一种事件，非常简单；</li>
+<li>看到 $x_t$ 中一个<strong>未被 mask</strong> 的 token，就可以确定它等于 $x_0$ 中对应位置的 token。所以去噪只需要关心被 mask 的位置；</li>
+<li>它和 BERT 的掩码语言模型目标有直接联系（见第 5 节）。</li>
+</ul>
+<p>这个系列后面的 SEDD、MDLM、RADD，主要研究的都是吸收态扩散。</p>
+<h3 id="23-离散化高斯discretized-gaussian">2.3 离散化高斯（Discretized Gaussian）</h3>
+<p>对于<strong>有序</strong>的离散数据，比如像素值 $\{0,\dots,255\}$，相邻的值在语义上也相近（灰度 128 和 129 几乎看不出差别）。均匀扩散会让 128 以相同的概率跳到 0 或 255，完全忽略了这种顺序结构。</p>
+<p>离散化高斯模仿连续空间的高斯扩散：每一步更倾向于跳到<strong>数值上相近</strong>的类别，跳动的幅度服从一个截断的高斯。对 $i\ne j$，</p>
+<p>$$
+[Q_t]_{ij} = \frac{\exp\Big(-\frac{4\,(i-j)^2}{(K-1)^2\beta_t}\Big)}{\sum_{n=-(K-1)}^{K-1}\exp\Big(-\frac{4\,n^2}{(K-1)^2\beta_t}\Big)}
+$$</p>
+<p>对角元素取 $[Q_t]_{ii} = 1 - \sum_{j\ne i}[Q_t]_{ij}$，保证每行和为 1。核心思想是 $[Q_t]_{ij}\propto\exp\big(-(i-j)^2/S_t\big)$，方差由 $\beta_t$ 控制。这个矩阵是对称的，因而是<strong>双随机矩阵</strong>（行和、列和都为 1），平稳分布是均匀分布。</p>
+<p>在 CIFAR-10 上，离散化高斯配合辅助损失取得了 D3PM 中最好的图像生成结果（FID 约 7.3），说明在离散空间中引入合适的结构偏置是有效的。</p>
+<h3 id="24-基于-token-嵌入距离token-embedding-distance">2.4 基于 Token 嵌入距离（Token Embedding Distance）</h3>
+<p>对文本来说，也可以利用词与词之间的语义相似度来设计转移：让 token 更容易变成<strong>语义相近</strong>的词，而不是任意一个词。</p>
+<p>具体做法是：用预训练的词嵌入，为每个 token 找到 $k$ 个最近邻，构建一个对称的最近邻图；在图上定义一个<strong>速率矩阵</strong> $R$（相邻节点之间 $R_{ij}=1/k$，对角元素取负的行和，使每行和为 0），然后用矩阵指数定义转移矩阵：</p>
+<p>$$
+Q_t = \exp(\alpha_t R)
+$$</p>
+<p>由于 $R$ 是对称的、行和为 0，$\exp(\alpha_tR)$ 是双随机矩阵，平稳分布是均匀分布。所有 $Q_t$ 都是同一个 $R$ 的函数，彼此可交换，所以 $\bar Q_t = \exp\big(\sum_{s\le t}\alpha_s R\big)$ 也有闭式解。</p>
+<p>这种"用速率矩阵和矩阵指数定义转移"的写法，其实是<strong>连续时间马尔可夫链</strong>（CTMC）的语言。下一篇的 SEDD 会在连续时间下系统地使用它。</p>
+<p>不过实验发现，在文本上，嵌入距离的效果并不如吸收态扩散。这也说明"语义相近的词之间互相替换"未必是一种好的腐蚀方式。</p>
+<h3 id="25-小结">2.5 小结</h3>
+<table>
+<thead>
+<tr>
+<th>转移矩阵</th>
+<th>腐蚀方式</th>
+<th>平稳分布</th>
+<th>适用数据</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>均匀</td>
+<td>以概率 $\beta_t$ 随机重采样</td>
+<td>均匀分布</td>
+<td>通用</td>
+</tr>
+<tr>
+<td>吸收态</td>
+<td>以概率 $\beta_t$ 变成 [MASK]</td>
+<td>全部是 [MASK]</td>
+<td>文本（效果最好）</td>
+</tr>
+<tr>
+<td>离散化高斯</td>
+<td>跳到数值相近的值</td>
+<td>均匀分布</td>
+<td>有序数据（像素）</td>
+</tr>
+<tr>
+<td>嵌入距离</td>
+<td>跳到语义相近的词</td>
+<td>均匀分布</td>
+<td>文本</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-噪声调度">3. 噪声调度</h2>
+<p>不同的转移矩阵需要配合不同的噪声调度 $\beta_t$：</p>
+<ul>
+<li><strong>线性调度</strong>：用于离散化高斯，线性增加高斯的方差，对应 DDPM 的线性调度。</li>
+<li><strong>余弦调度</strong>：用于均匀扩散，沿用 Nichol &amp; Dhariwal 提出的余弦调度，让 $\bar\alpha_t$ 按余弦曲线下降。</li>
+<li><strong>互信息调度</strong>（Mutual Information）：针对结构化矩阵（如嵌入距离）提出。不同的转移矩阵"破坏信息的速度"差别很大，难以直接比较 $\beta_t$。互信息调度的目标是让 $x_t$ 与 $x_0$ 之间的<strong>互信息线性地降为 0</strong>：</li>
+</ul>
+<p>$$
+I(x_t;x_0) \approx \Big(1-\frac{t}{T}\Big)\,H(x_0)
+$$</p>
+<p>$H(x_0)$ 是数据的熵。也就是说，每一步都销毁同样多的信息。</p>
+<p>对吸收态扩散，互信息调度有一个非常简单的形式。被 mask 的 token 不携带任何关于 $x_0$ 的信息，未被 mask 的 token 携带全部信息，所以 $I(x_t;x_0) = \bar\alpha_t\,H(x_0)$。要让它线性下降，只需 $\bar\alpha_t = 1-\frac tT$。由 $\bar\alpha_t = \prod_{s\le t}(1-\beta_s)$，可以验证取</p>
+<p>$$
+\beta_t = \frac{1}{T-t+1}
+$$</p>
+<p>即可：</p>
+<p>$$
+\bar\alpha_t = \prod_{s=1}^t\Big(1-\frac{1}{T-s+1}\Big) = \prod_{s=1}^t\frac{T-s}{T-s+1} = \frac{T-1}{T}\cdot\frac{T-2}{T-1}\cdots\frac{T-t}{T-t+1} = \frac{T-t}{T}
+$$</p>
+<p>（望远镜乘积。）这正是 Sohl-Dickstein et al. (2015) 最早提出的调度。在这个调度下，$t$ 时刻每个 token 被 mask 的概率恰好是 $t/T$，被 mask 的比例随时间<strong>线性</strong>增长。</p>
+<h2 id="4-反向过程与损失函数">4. 反向过程与损失函数</h2>
+<h3 id="41-反向过程160-参数化">4.1 反向过程：$x_0$ 参数化</h3>
+<p>生成时，我们从平稳分布（比如全是 [MASK] 的序列）出发，用一个学习到的反向过程 $p_\theta(x_{t-1}\mid x_t)$ 逐步去噪。最直接的做法是让网络直接输出 $p_\theta(x_{t-1}\mid x_t)$ 的 logits。</p>
+<p>D3PM 采用的是另一种参数化，和 DDPM 中"预测 $x_0$"的思路相同：网络 $\mathrm{nn}_\theta(x_t)$ 先预测干净数据的分布 $\tilde p_\theta(\tilde x_0\mid x_t)$，再把它代入前向过程的后验，得到反向一步：</p>
+<p>$$
+p_\theta(x_{t-1}\mid x_t) \propto \sum_{\tilde x_0} q(x_{t-1}, x_t\mid\tilde x_0)\;\tilde p_\theta(\tilde x_0\mid x_t)
+$$</p>
+<p>直观地说：网络猜测"$x_0$ 可能是什么"，然后对每一种可能的 $x_0$，按真实的前向后验算出 $x_{t-1}$ 的分布，再按网络的猜测加权平均。</p>
+<p>这种参数化有一个重要的好处：<strong>它自动保证 $p_\theta(x_{t-1}\mid x_t)$ 具有由 $Q_t$ 决定的正确稀疏模式</strong>。例如在吸收态扩散中，如果 $x_t$ 中某个位置不是 [MASK]，那么无论网络输出什么，$q(x_{t-1},x_t\mid\tilde x_0)$ 都只允许 $x_{t-1}$ 等于 $x_t$，网络不可能"把一个已经确定的词改掉"。直接输出 logits 的参数化则需要网络自己学会这一点。</p>
+<p>另外，位置之间的独立性也体现在这里：网络读入整个序列 $\boldsymbol{x}_t$，但对每个位置<strong>独立地</strong>输出一个关于 $x_0$ 的分布，反向一步在不同位置之间是独立采样的：</p>
+<p>$$
+p_\theta(\boldsymbol{x}_{t-1}\mid\boldsymbol{x}_t) = \prod_{i=1}^N p_\theta\big([\boldsymbol{x}_{t-1}]_i\mid\boldsymbol{x}_t\big)
+$$</p>
+<p>这是一个近似：真实的反向转移中，同一步里不同位置之间是有依赖的（比如"New"和"York"应该一起出现）。当步长很小、每一步只改动很少的位置时，这个近似的误差很小；步数太少时，同一步里同时决定多个位置会导致不连贯。这是离散扩散采样需要很多步的一个重要原因，后面几篇会反复讨论。</p>
+<h3 id="42-变分下界">4.2 变分下界</h3>
+<p>和 DDPM 完全一样，从负对数似然出发，用 Jensen 不等式得到变分上界，再按时间步拆开：</p>
+<p>$$
+L_\text{vb} = \mathbb{E}_{q(x_0)}\Big[\underbrace{\mathrm{KL}\big(q(x_T\mid x_0)\,\|\,p(x_T)\big)}_{L_T} + \sum_{t=2}^T\underbrace{\mathbb{E}_{q(x_t|x_0)}\Big[\mathrm{KL}\big(q(x_{t-1}\mid x_t,x_0)\,\|\,p_\theta(x_{t-1}\mid x_t)\big)\Big]}_{L_{t-1}} \underbrace{-\,\mathbb{E}_{q(x_1|x_0)}\big[\log p_\theta(x_0\mid x_1)\big]}_{L_0}\Big]
+$$</p>
+<p>推导过程和上一个系列第 3 篇的 3.3 节一模一样（那里的推导没有用到高斯分布的任何性质），这里不再重复。三类项的含义也相同：</p>
+<ul>
+<li>$L_T$：前向过程终点与先验的差距，没有可学参数，是常数；</li>
+<li>$L_{t-1}$：每一步的去噪分布要贴近可解的后验。现在 KL 是两个<strong>分类分布</strong>之间的，直接按定义求和即可，不需要高斯 KL 公式；</li>
+<li>$L_0$：最后一步的重构项。</li>
+</ul>
+<h3 id="43-辅助损失">4.3 辅助损失</h3>
+<p>为了进一步提升生成质量，作者引入了一个<strong>辅助损失</strong>，直接监督网络在每一步对 $x_0$ 的预测：</p>
+<p>$$
+L_\lambda = L_\text{vb} + \lambda\;\mathbb{E}_{q(x_0)}\,\mathbb{E}_{q(x_t|x_0)}\big[-\log\tilde p_\theta(x_0\mid x_t)\big]
+$$</p>
+<p>第二项就是"看到 $x_t$，预测 $x_0$"的交叉熵。它和 $L_\text{vb}$ 的最优解是一致的（都希望 $\tilde p_\theta$ 等于真实的 $q(x_0\mid x_t)$），但提供了更直接的训练信号。这和 Improved DDPM 中混合 $L_\text{simple}$ 与 $L_\text{vlb}$ 的思路类似。作者发现，使用 $L_\lambda$ 能显著提升图像样本的质量（$\lambda$ 取 0.01 或 0.001 这样的小值）。</p>
+<h3 id="44-训练与采样">4.4 训练与采样</h3>
+<p><strong>训练</strong>（每个 batch）：</p>
+<ol>
+<li>采样 $\boldsymbol{x}_0$ 和 $t\sim\mathcal{U}\{1,\dots,T\}$；</li>
+<li>对每个位置独立地按 $\mathrm{Cat}(x_0\bar Q_t)$ 采样，得到 $\boldsymbol{x}_t$；</li>
+<li>网络读入 $\boldsymbol{x}_t$ 和 $t$，输出每个位置的 $\tilde p_\theta(\tilde x_0\mid\boldsymbol{x}_t)$；</li>
+<li>用后验公式算出 $q(x_{t-1}\mid x_t,x_0)$ 和 $p_\theta(x_{t-1}\mid x_t)$，计算 KL，加上辅助交叉熵，反向传播。</li>
+</ol>
+<p><strong>采样</strong>：</p>
+<ol>
+<li>从平稳分布采样 $\boldsymbol{x}_T$（吸收态扩散中就是全 [MASK] 序列）；</li>
+<li>对 $t = T,\dots,1$：网络预测 $\tilde p_\theta(\tilde x_0\mid\boldsymbol{x}_t)$，算出 $p_\theta(x_{t-1}\mid x_t)$，每个位置独立采样得到 $\boldsymbol{x}_{t-1}$；</li>
+<li>输出 $\boldsymbol{x}_0$。</li>
+</ol>
+<p>在吸收态扩散中，采样过程就是：从全 [MASK] 出发，每一步把一部分 [MASK] 揭开、填上网络预测的词，已经揭开的词保持不变，直到所有位置都被填满。</p>
+<h2 id="5-与已有文本模型的联系">5. 与已有文本模型的联系</h2>
+<p>这一节是 D3PM 论文中最有启发性的部分：在离散扩散的框架下，几种看起来完全不同的文本模型，都可以统一成扩散模型的特例。</p>
+<h3 id="51-bert-是单步扩散模型">5.1 BERT 是单步扩散模型</h3>
+<p>BERT 的预训练目标可以看作只有<strong>一个时间步</strong>（$T=1$）的 D3PM。构造一个同时包含吸收态和均匀转移的矩阵：</p>
+<p>$$
+Q = \alpha\,\mathbb{1}e_m^\top + \beta\,\mathbb{1}\mathbb{1}^\top/K + (1-\alpha-\beta)\,I
+$$</p>
+<p>意思是：每个 token 以概率 $\alpha$ 变成 [MASK]，以概率 $\beta$ 变成一个均匀随机的 token，以剩余的概率保持不变。BERT 的做法是选 15% 的 token，其中 80% 换成 [MASK]、10% 换成随机词、10% 保持不变，对应 $\alpha = 0.12$、$\beta\approx0.015$。</p>
+<p>对单步扩散过程 $q(x_1\mid x_0)$，ELBO 中没有 $L_{t-1}$ 项，只剩</p>
+<p>$$
+L_\text{vb} - L_T = -\,\mathbb{E}_{q(x_1|x_0)}\big[\log p_\theta(x_0\mid x_1)\big] = L_\text{BERT}
+$$</p>
+<p>$L_T$ 是常数，与参数无关。剩下的正是 BERT 的去噪目标：看到被腐蚀的序列，恢复原始序列。（BERT 只在被选中的位置上计算损失，相当于假设未被腐蚀的位置可以直接复制。）</p>
+<p>所以 BERT 就是一个"只走一步"的离散扩散模型。它学到了很好的去噪器，但由于只有一步，不能从纯噪声出发生成文本。</p>
+<h3 id="52-自回归模型也是离散扩散模型">5.2 自回归模型也是离散扩散模型</h3>
+<p>自回归模型按从左到右的顺序逐个生成 token。这可以重新表述为一个<strong>确定性</strong>的离散扩散过程。</p>
+<p><strong>确定性前向过程。</strong> 设序列长度为 $N$，令总时间步 $T=N$。第 $t$ 步的前向过程把序列的<strong>最后 $t$ 个</strong>位置变成 [MASK]（位置编号从 1 开始）：</p>
+<p>$$
+[x_t]_i = \begin{cases} [x_0]_i &amp; i\le N-t \\ \text{[MASK]} &amp; i &gt; N-t \end{cases}
+$$</p>
+<p>也就是说，前向过程从右往左，每一步确定性地多遮住一个 token。$t=N$ 时整个序列都是 [MASK]。</p>
+<p><strong>确定性后验。</strong> 由于前向过程是确定性的，后验也是确定的（Delta 分布）：从 $t$ 退回 $t-1$ 时，只有位置 $N-t+1$ 从 [MASK] 变回原词，其余位置都不变：</p>
+<p>$$
+q\big([x_{t-1}]_i\mid x_t, x_0\big) = \begin{cases} \delta_{[x_0]_i} &amp; i = N-t+1 \\ \delta_{[x_t]_i} &amp; \text{其他} \end{cases}
+$$</p>
+<p><strong>KL 退化为交叉熵。</strong> 计算每个位置的 $\mathrm{KL}\big(q([x_{t-1}]_j\mid x_t,x_0)\,\|\,p_\theta([x_{t-1}]_j\mid x_t)\big)$：</p>
+<ul>
+<li>对 $j\ne N-t+1$ 的位置，后验是确定的"保持不变"，网络（在 $x_0$ 参数化下）也会保持不变，KL 为 0；</li>
+<li>对唯一发生变化的位置 $i = N-t+1$，后验是一个 Delta 分布，Delta 分布与任何分布 $p$ 之间的 KL 就是 $-\log p$：</li>
+</ul>
+<p>$$
+\mathrm{KL}\big(\delta_{[x_0]_i}\,\|\,p_\theta([x_{t-1}]_i\mid x_t)\big) = -\log p_\theta\big([x_0]_i\mid x_t\big)
+$$</p>
+<p>而 $x_t$ 恰好就是"前 $N-t$ 个 token 已知、后面全是 [MASK]"。把所有 $t$ 加起来：</p>
+<p>$$
+L_\text{vb} = -\sum_{t=1}^{N}\log p_\theta\big([x_0]_{N-t+1}\mid [x_0]_{1:N-t}\big) = -\sum_{i=1}^N\log p_\theta\big([x_0]_i\mid[x_0]_{&lt;i}\big)
+$$</p>
+<p>正是自回归模型的负对数似然。<strong>自回归语言模型就是一个前向过程固定为"从右往左逐个 mask"的离散扩散模型。</strong></p>
+<p>这个视角揭示了两者的根本区别：自回归模型规定了一个固定的生成顺序（从左到右），每一步只生成一个 token；而吸收态扩散的前向过程是<strong>随机</strong>的，被 mask 的位置是随机选的，所以模型要学会以<strong>任意顺序</strong>生成，每一步也可以同时生成多个 token。</p>
+<h3 id="53-生成式掩码语言模型也是扩散模型">5.3 生成式掩码语言模型也是扩散模型</h3>
+<p>生成式掩码语言模型（Generative MLM）通过反复预测被 mask 的 token 来生成文本。这一节说明：吸收态 D3PM 本质上就是这种 MLM 目标的一个<strong>重加权</strong>版本。</p>
+<p><strong>标准 MLM 目标。</strong> 先采样 $x_0$，按某种分布采样要遮住的 token 数量 $k$，然后随机遮住 $k$ 个 token，在被遮住的位置上计算交叉熵，按 $k$ 取平均：</p>
+<p>$$
+\min\; -\,\mathbb{E}_{q(x_0)}\Big[\mathbb{E}_{k\in[1,\dots,|x_0|]}\Big[\frac1k\,\mathbb{E}_{x_k\text{ 有 }k\text{ 个 mask}}\Big[\sum_{i:\,[x_k]_i = m}\log p_\theta\big([x_0]_i\mid x_k\big)\Big]\Big]\Big]
+$$</p>
+<p><strong>吸收态 D3PM 的推导。</strong> 用吸收态转移矩阵和 $x_0$ 参数化，逐项计算 $L_{t-1}$。</p>
+<p>先看真实后验。对 $x_t$ 中<strong>未被 mask</strong> 的位置，$x_{t-1}$ 必然和 $x_t$ 相同，后验是确定的，网络的 $p_\theta$ 也是确定的（4.1 节的稀疏性），KL 为 0。</p>
+<p>对 $x_t$ 中<strong>被 mask</strong> 的位置（$[x_t]_i = m$），$x_{t-1}$ 只有两种可能：在 $t-1$ 时刻已经被 mask，或者在 $t-1$ 时刻还是原词 $[x_0]_i$、恰好在第 $t$ 步被 mask。由 1.4 节的后验公式：</p>
+<p>$$
+q\big([x_{t-1}]_i = [x_0]_i\mid x_t, x_0\big) = \frac{\beta_t\,\bar\alpha_{t-1}}{1-\bar\alpha_t}, \qquad
+q\big([x_{t-1}]_i = m\mid x_t, x_0\big) = \frac{1-\bar\alpha_{t-1}}{1-\bar\alpha_t}
+$$</p>
+<p>（分子分别是"$t-1$ 时还未被 mask 的概率 $\bar\alpha_{t-1}$"乘以"第 $t$ 步被 mask 的概率 $\beta_t$"，以及"$t-1$ 时已被 mask 的概率 $1-\bar\alpha_{t-1}$"乘以"保持 mask 的概率 1"；分母是 $t$ 时被 mask 的概率。两者之和为 1。）</p>
+<p>再看 $x_0$ 参数化下的反向过程。网络预测 $\tilde p_\theta(\tilde x_0\mid x_t)$，代入后验后，被 mask 的位置的反向分布为</p>
+<p>$$
+p_\theta\big([x_{t-1}]_i = k\mid x_t\big) = \begin{cases} \dfrac{\beta_t\,\bar\alpha_{t-1}}{1-\bar\alpha_t}\;\tilde p_\theta\big([\tilde x_0]_i = k\mid x_t\big) &amp; k\ne m \\[10pt] \dfrac{1-\bar\alpha_{t-1}}{1-\bar\alpha_t} &amp; k = m\end{cases}
+$$</p>
+<p>即：以和真实后验相同的概率"保持 mask"，否则按网络的预测揭开成某个词。</p>
+<p><strong>计算 KL。</strong> 真实后验只在 $[x_0]_i$ 和 $m$ 两处有概率，两处中"保持 mask"的概率和 $p_\theta$ 完全相同，对 KL 的贡献为 0；"揭开成 $[x_0]_i$"的概率之比为 $1/\tilde p_\theta([x_0]_i\mid x_t)$。所以</p>
+<p>$$
+\mathrm{KL}\big(q(x_{t-1}\mid x_t,x_0)\,\|\,p_\theta(x_{t-1}\mid x_t)\big) = -\,\frac{\beta_t\,\bar\alpha_{t-1}}{1-\bar\alpha_t}\sum_{i:\,[x_t]_i=m}\log\tilde p_\theta\big([x_0]_i\mid x_t\big)
+$$</p>
+<p><strong>特定调度下的简化。</strong> 如果使用第 3 节的互信息调度 $\beta_t = \frac{1}{T-t+1}$，则 $\bar\alpha_{t-1} = \frac{T-t+1}{T}$，$1-\bar\alpha_t = \frac tT$，系数为</p>
+<p>$$
+\frac{\beta_t\,\bar\alpha_{t-1}}{1-\bar\alpha_t} = \frac{\frac{1}{T-t+1}\cdot\frac{T-t+1}{T}}{\frac tT} = \frac1t
+$$</p>
+<p>于是</p>
+<p>$$
+L_{t-1} = -\,\frac1t\sum_{i:\,[x_t]_i=m}\log\tilde p_\theta\big([x_0]_i\mid x_t\big)
+$$</p>
+<p><strong>最终目标与 MLM 的联系。</strong> 把所有时间步加起来，吸收态 D3PM 的完整目标为</p>
+<p>$$
+L_\text{vb} = -\,\mathbb{E}_{q(x_0)}\Big[\sum_{t=1}^T\frac1t\;\mathbb{E}_{q(x_t|x_0)}\Big[\sum_{i:\,[x_t]_i=m}\log p_\theta\big([x_0]_i\mid x_t\big)\Big]\Big]
+$$</p>
+<p>对比标准 MLM 目标，两者几乎一样，区别只在<strong>加权方式</strong>：</p>
+<ul>
+<li>标准 MLM 对 $k$ 个被 mask 的 token 取平均，即除以<strong>实际</strong>被 mask 的数量 $k$；</li>
+<li>吸收态 D3PM 除以 $t$。在这个调度下，$t$ 时刻每个 token 被 mask 的概率是 $t/T$，被 mask 的<strong>期望</strong>数量正比于 $t$。</li>
+</ul>
+<p>所以 D3PM 相当于一个按"期望掩码数量"加权的 MLM。这种加权方式略微降低了 $t$ 接近 0 和接近 $T$ 时的权重，整体的加权分布在中间部分非常接近均匀分布。</p>
+<p>这个结论非常重要：<strong>吸收态离散扩散的训练目标，本质上就是一个加权的掩码语言模型目标。</strong> 后面的 MDLM 会把这个结论推广到连续时间和任意噪声调度，得到一个更简洁的形式；RADD 则会进一步说明，这个模型实际上在学习的是干净数据的条件分布。</p>
+<h2 id="6-实验与局限">6. 实验与局限</h2>
+<p><strong>实验结论。</strong></p>
+<ul>
+<li><strong>图像</strong>（CIFAR-10）：离散化高斯 + 辅助损失效果最好，样本质量接近连续空间的 DDPM，对数似然优于连续 DDPM。这说明在离散空间中，引入"相邻像素值相近"这样的结构偏置很重要；均匀扩散效果明显较差。</li>
+<li><strong>文本</strong>（text8 字符级、LM1B 词级）：吸收态扩散效果最好，明显好于均匀扩散和嵌入距离；但和同等规模的自回归 Transformer 相比，似然仍有明显差距。</li>
+</ul>
+<p><strong>局限。</strong></p>
+<ul>
+<li><strong>似然差距</strong>：在文本上与自回归模型差距较大，这是后续 SEDD、MDLM 等工作要缩小的主要目标；</li>
+<li><strong>采样步数多</strong>：由于每一步在不同位置之间独立采样，步数太少会损害连贯性；</li>
+<li><strong>离散时间</strong>：$T$ 是固定的，训练和采样必须使用相同的离散时间网格。后续工作把离散扩散推广到连续时间（CTMC），可以在采样时自由选择步数；</li>
+<li><strong>大词表的代价</strong>：对一般的 $Q_t$，存储和计算 $K\times K$ 矩阵在词表很大时（几万个 token）代价很高，只有均匀、吸收态这类有闭式解的设计才实用。</li>
+</ul>
+<h2 id="7-小结">7. 小结</h2>
+<ul>
+<li><strong>D3PM 用转移矩阵 $Q_t$ 代替高斯噪声</strong>，在离散状态空间上定义扩散。边际 $q(x_t\mid x_0) = \mathrm{Cat}(x_0\bar Q_t)$ 和后验 $q(x_{t-1}\mid x_t,x_0)$ 都有闭式解，整套 ELBO 推导与 DDPM 一一对应。</li>
+<li><strong>转移矩阵可以设计</strong>：均匀、吸收态、离散化高斯、嵌入距离，对应不同的结构偏置。吸收态（[MASK]）在文本上效果最好，离散化高斯在图像上效果最好。</li>
+<li><strong>$x_0$ 参数化</strong>：网络预测干净数据的分布，再代入真实后验，自动保证正确的稀疏模式。</li>
+<li><strong>统一视角</strong>：BERT 是单步扩散，自回归模型是确定性的逐个 mask 扩散，吸收态 D3PM 是按期望掩码数加权的 MLM。</li>
+</ul>
+<p>D3PM 打开了离散扩散的大门，但留下了一个问题：在连续扩散中，score $\nabla_x\log p_t(x)$ 是整个理论的核心，而在离散空间里，梯度没有定义。离散扩散的"score"应该是什么？下一篇的 SEDD 会给出答案：<strong>分布的比值</strong>。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Sohl-Dickstein et al. <em>Deep Unsupervised Learning using Nonequilibrium Thermodynamics.</em> ICML 2015.</li>
+<li>Devlin et al. <em>BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.</em> NAACL 2019.</li>
+<li>Ho, Jain &amp; Abbeel. <em>Denoising Diffusion Probabilistic Models.</em> NeurIPS 2020.</li>
+<li>Hoogeboom et al. <em>Argmax Flows and Multinomial Diffusion: Learning Categorical Distributions.</em> NeurIPS 2021.</li>
+<li>Austin et al. <em>Structured Denoising Diffusion Models in Discrete State-Spaces.</em> NeurIPS 2021.</li>
+<li>Nichol &amp; Dhariwal. <em>Improved Denoising Diffusion Probabilistic Models.</em> ICML 2021.</li>
+<li>Li et al. <em>Diffusion-LM Improves Controllable Text Generation.</em> NeurIPS 2022.</li>
+<li>Campbell et al. <em>A Continuous Time Framework for Discrete Denoising Models.</em> NeurIPS 2022.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>

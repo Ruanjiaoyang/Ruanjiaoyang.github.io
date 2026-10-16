@@ -188,10 +188,13 @@ p { margin: 0; }
 
 /* blog list: Lil'Log-style entry cards, whole card clickable */
 .entries { display: grid; gap: 20px; }
+#blog .series { display: grid; gap: 16px; }
+#blog .series + .series { margin-top: 28px; }
+.series-name { margin: 0; font-family: var(--f-mono); font-size: 0.8rem; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
 .entry { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; display: grid; gap: 8px; transition: transform .1s; }
 .entry:active { transform: scale(0.98); }
 .entry:hover { border-color: var(--muted); }
-.entry h3 { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.entry h4 { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.3; color: var(--ink); }
 .entry-sum { color: var(--muted); font-size: 0.9rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .entry-meta { color: var(--muted); font-size: 0.8rem; }
 .entry-link { position: absolute; inset: 0; border-radius: 8px; }
@@ -346,55 +349,69 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
     <section id="blog">
       <h2><span lang="en">Blog</span><span lang="zh">博客</span></h2>
       <!-- BLOG:START -->
-      <div class="entries">
+      <div class="series">
+        <h3 class="series-name"><span lang="en">From GANs to Diffusion</span><span lang="zh">从 GAN 到 Diffusion</span></h3>
+        <div class="entries">
         <article class="entry">
-          <h3><span lang="en">From GANs to Diffusion: Series Overview</span><span lang="zh">从 GAN 到 Diffusion：系列导读</span></h3>
+          <h4><span lang="en">From GANs to Diffusion: Series Overview</span><span lang="zh">从 GAN 到 Diffusion：系列导读</span></h4>
           <p class="entry-sum">A reading guide to seven posts on deep generative models, organized around one question: how do we learn a distribution we can sample from when its normalizing constant is intractable?</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 2 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/overview/" aria-label="From GANs to Diffusion: Series Overview"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></h3>
+          <h4><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></h4>
           <p class="entry-sum">GANs learn to sample from a data distribution without ever writing down its density. This post covers the generator and discriminator, derives the minimax objective, the optimal discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks through architecture and training, and analyzes vanishing gradients, mode collapse and unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN, CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 23 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/gan/" aria-label="GAN: Learning a Distribution Through a Two-Player Game"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">From AE to VAE to VQ-VAE: Making the Latent Space Samplable</span><span lang="zh">从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样</span></h3>
+          <h4><span lang="en">From AE to VAE to VQ-VAE: Making the Latent Space Samplable</span><span lang="zh">从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样</span></h4>
           <p class="entry-sum">An autoencoder compresses data but cannot generate, because nothing constrains its latent space. VAEs fix this with a probabilistic encoder and a KL regularizer. This post derives the evidence lower bound in two ways, the closed-form Gaussian KL and the reparameterization trick, explains blurriness and posterior collapse, and then covers VQ-VAE in detail: codebook, the three loss terms, the straight-through estimator, EMA updates, the learned prior, codebook collapse, VQ-VAE-2 and VQGAN, which together became the tokenizer behind latent diffusion and autoregressive image models.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/vae/" aria-label="From AE to VAE to VQ-VAE: Making the Latent Space Samplable"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">DDPM: Add Noise Step by Step, Then Learn to Remove It</span><span lang="zh">DDPM：一步步加噪，再一步步去噪</span></h3>
+          <h4><span lang="en">DDPM: Add Noise Step by Step, Then Learn to Remove It</span><span lang="zh">DDPM：一步步加噪，再一步步去噪</span></h4>
           <p class="entry-sum">DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the closed-form marginal q(x_t|x_0), the tractable posterior q(x_{t-1}|x_t,x_0) by completing the square, the full variational bound and its decomposition into L_T, L_{t-1} and L_0, and how the Gaussian KL terms collapse to the simple noise-prediction loss. It then covers the training and sampling algorithms, the choice of reverse variance, noise schedules, network architecture, and the epsilon, x_0 and v parameterizations.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 26 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/ddpm/" aria-label="DDPM: Add Noise Step by Step, Then Learn to Remove It"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">DDIM: Fewer Sampling Steps Without Retraining</span><span lang="zh">DDIM：不重新训练，把 1000 步采样压到几十步</span></h3>
+          <h4><span lang="en">DDIM: Fewer Sampling Steps Without Retraining</span><span lang="zh">DDIM：不重新训练，把 1000 步采样压到几十步</span></h4>
           <p class="entry-sum">The DDPM training loss only depends on the marginals q(x_t|x_0), not on the Markov forward chain. DDIM exploits this freedom to define a family of non-Markovian inference processes with the same marginals. This post derives the family in two ways (by induction on the paper&#x27;s definition and by solving for undetermined coefficients), shows why one network trained with L_simple serves every member of the family, and covers the eta parameter, deterministic sampling, step skipping, inversion, interpolation, and the interpretation of DDIM as an Euler step of an ODE.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/ddim/" aria-label="DDIM: Fewer Sampling Steps Without Retraining"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">Score-Based Generative Models: Learn the Gradient, Not the Density</span><span lang="zh">Score-based 模型：不学密度，学密度的梯度</span></h3>
+          <h4><span lang="en">Score-Based Generative Models: Learn the Gradient, Not the Density</span><span lang="zh">Score-based 模型：不学密度，学密度的梯度</span></h4>
           <p class="entry-sum">The score of a distribution, the gradient of its log-density, does not depend on the normalizing constant. This post derives implicit, sliced and denoising score matching, explains Langevin dynamics and why its stationary distribution is the target, analyzes the three failure modes of the naive approach (manifold hypothesis, inaccurate low-density scores, wrong mode weights), and walks through NCSN: multi-scale noise, the noise-conditional objective and annealed Langevin sampling. It closes by showing that predicting the score is the same as predicting DDPM&#x27;s noise, plus inpainting.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/score-based/" aria-label="Score-Based Generative Models: Learn the Gradient, Not the Density"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion</span><span lang="zh">SDE 与概率流 ODE：用连续时间统一扩散模型</span></h3>
+          <h4><span lang="en">SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion</span><span lang="zh">SDE 与概率流 ODE：用连续时间统一扩散模型</span></h4>
           <p class="entry-sum">Letting the number of diffusion steps go to infinity turns the forward process into a stochastic differential equation. This post derives the reverse-time SDE from Bayes&#x27; rule and a Taylor expansion, the continuous-time denoising score matching objective, and the VE and VP SDEs that recover NCSN and DDPM, and proves they are equivalent up to rescaling. It then derives the Fokker–Planck equation with the Dirac delta trick, uses it to build a family of SDEs that share the same marginals, and arrives at the probability flow ODE, showing why DDIM is its Euler discretization and covering samplers (reverse diffusion, predictor–corrector, ODE solvers) and exact likelihoods.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 28 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/sde-ode/" aria-label="SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion"></a>
         </article>
         <article class="entry">
-          <h3><span lang="en">Guidance: Steering Diffusion Models Toward a Condition</span><span lang="zh">Guidance：让扩散模型听指令</span></h3>
+          <h4><span lang="en">Guidance: Steering Diffusion Models Toward a Condition</span><span lang="zh">Guidance：让扩散模型听指令</span></h4>
           <p class="entry-sum">Conditional generation needs the score of p(x|y). Bayes&#x27; rule splits it into an unconditional score plus a classifier gradient. This post derives classifier guidance both from the discrete DDPM step (a Taylor expansion that shifts the Gaussian mean) and from the score view, explains the guidance scale as sampling from a sharpened distribution, and then derives classifier-free guidance, its training with condition dropout, the fidelity–diversity trade-off, and practical fixes such as dynamic thresholding, CFG rescale, guidance intervals and negative prompts. It ends with how text-to-image systems use CFG and the link between guidance and KL-regularized RL.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/generative-models/guidance/" aria-label="Guidance: Steering Diffusion Models Toward a Condition"></a>
         </article>
+        </div>
+      </div>
+      <div class="series">
+        <h3 class="series-name"><span lang="en">Diffusion Language Models</span><span lang="zh">扩散语言模型</span></h3>
+        <div class="entries">
+        <article class="entry">
+          <h4><span lang="en">D3PM: Diffusion Models in Discrete State Spaces</span><span lang="zh">D3PM：把扩散模型搬到离散状态空间</span></h4>
+          <p class="entry-sum">Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the forward marginal and the closed-form posterior, compares uniform, absorbing ([MASK]), discretized Gaussian and embedding-based transition matrices, explains the noise schedules, the x_0-parameterization of the reverse process and the hybrid loss, and shows that BERT, autoregressive language models and generative masked language models are all special cases of discrete diffusion.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 22 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/diffusion-lm/d3pm/" aria-label="D3PM: Diffusion Models in Discrete State Spaces"></a>
+        </article>
+        </div>
       </div>
       <!-- BLOG:END -->
     </section>
