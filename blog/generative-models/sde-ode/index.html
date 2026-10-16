@@ -1,0 +1,649 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SDE 与概率流 ODE：用连续时间统一扩散模型 · Jiaoyang Ruan</title>
+<meta name="description" content="Letting the number of diffusion steps go to infinity turns the forward process into a stochastic differential equation. This post derives the reverse-time SDE from Bayes&#x27; rule and a Taylor expansion, the continuous-time denoising score matching objective, and the VE and VP SDEs that recover NCSN and DDPM, and proves they are equivalent up to rescaling. It then derives the Fokker–Planck equation with the Dirac delta trick, uses it to build a family of SDEs that share the same marginals, and arrives at the probability flow ODE, showing why DDIM is its Euler discretization and covering samplers (reverse diffusion, predictor–corrector, ODE solvers) and exact likelihoods.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">从 GAN 到 Diffusion · 第 6 篇</p>
+    <h1>SDE 与概率流 ODE：用连续时间统一扩散模型</h1>
+    <p class="subtitle">SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">生成模型</span><span class="tag">Diffusion</span><span class="tag">SDE</span><span class="tag">ODE</span><span class="tag">Fokker-Planck</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#1-前向过程从离散到连续">1. 前向过程：从离散到连续</a><ul>
+<li><a href="#11-为什么用-sde">1.1 为什么用 SDE</a></li>
+<li><a href="#12-布朗运动与-73">1.2 布朗运动与 $\sqrt{\Delta t}$</a></li>
+<li><a href="#13-离散形式">1.3 离散形式</a></li>
+</ul>
+</li>
+<li><a href="#2-反向-sde">2. 反向 SDE</a><ul>
+<li><a href="#21-目标">2.1 目标</a></li>
+<li><a href="#22-推导">2.2 推导</a></li>
+<li><a href="#23-结论只需要-score">2.3 结论：只需要 score</a></li>
+</ul>
+</li>
+<li><a href="#3-训练连续时间的去噪分数匹配">3. 训练：连续时间的去噪分数匹配</a><ul>
+<li><a href="#31-为什么不直接算-score">3.1 为什么不直接算 score</a></li>
+<li><a href="#32-训练目标">3.2 训练目标</a></li>
+<li><a href="#33-什么时候条件分布有闭式解">3.3 什么时候条件分布有闭式解</a></li>
+</ul>
+</li>
+<li><a href="#4-ve-sde-与-vp-sdencsn-和-ddpm-的统一">4. VE-SDE 与 VP-SDE：NCSN 和 DDPM 的统一</a><ul>
+<li><a href="#41-ncsn-ve-sde">4.1 NCSN → VE-SDE</a></li>
+<li><a href="#42-ddpm-vp-sde">4.2 DDPM → VP-SDE</a></li>
+<li><a href="#43-ncsn-和-ddpm-完全等价">4.3 NCSN 和 DDPM 完全等价</a></li>
+<li><a href="#44-ddpm-从没估计过-score怎么放进-sde-框架">4.4 DDPM 从没估计过 score，怎么放进 SDE 框架？</a></li>
+</ul>
+</li>
+<li><a href="#5-fokkerplanck-方程从轨迹到边际分布">5. Fokker–Planck 方程：从轨迹到边际分布</a><ul>
+<li><a href="#51-动机sde-版的-ddim">5.1 动机：SDE 版的 DDIM</a></li>
+<li><a href="#52-工具dirac-函数">5.2 工具：Dirac 函数</a></li>
+<li><a href="#53-推导-fokkerplanck-方程">5.3 推导 Fokker–Planck 方程</a></li>
+<li><a href="#54-一族共享边际分布的-sde">5.4 一族共享边际分布的 SDE</a></li>
+</ul>
+</li>
+<li><a href="#6-概率流-ode">6. 概率流 ODE</a><ul>
+<li><a href="#61-277sde-退化为-ode">6.1 $\sigma_t=0$：SDE 退化为 ODE</a></li>
+<li><a href="#62-为什么要特别研究-286">6.2 为什么要特别研究 $\sigma_t=0$</a></li>
+<li><a href="#63-sde-与-ode-的对比">6.3 SDE 与 ODE 的对比</a></li>
+<li><a href="#64-ddim-就是概率流-ode-的欧拉离散化">6.4 DDIM 就是概率流 ODE 的欧拉离散化</a></li>
+</ul>
+</li>
+<li><a href="#7-采样器">7. 采样器</a><ul>
+<li><a href="#71-反向扩散采样器">7.1 反向扩散采样器</a></li>
+<li><a href="#72-预测-校正采样器predictorcorrector">7.2 预测-校正采样器（Predictor–Corrector）</a></li>
+<li><a href="#73-ode-求解器">7.3 ODE 求解器</a></li>
+</ul>
+</li>
+<li><a href="#8-一个延伸条件生成">8. 一个延伸：条件生成</a></li>
+<li><a href="#9-小结">9. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<p>前两篇的 DDPM 和 NCSN 都是<strong>离散</strong>的：噪声水平是 $T=1000$ 个或 $L=10$ 个固定的值。Song et al. 在 ICLR 2021 发表的 <em>Score-Based Generative Modeling through Stochastic Differential Equations</em>（下文简称 SDE 论文）把步数取到无穷，用一条<strong>随机微分方程</strong>（Stochastic Differential Equation，SDE）连续地描述加噪过程，从 SDE 的视角对 score-based 模型和 DDPM 做了统一的解读。</p>
+<p>在这个视角下：</p>
+<ul>
+<li>DDPM 和 NCSN 只是同一个框架下两组不同的系数；</li>
+<li>生成过程是这条 SDE 的<strong>时间反演</strong>，只需要知道每个时刻的 score；</li>
+<li>存在一条<strong>确定性的常微分方程</strong>（ODE），和 SDE 具有完全相同的边际分布，DDIM 就是它的离散化。</li>
+</ul>
+<p>这一篇比前几篇用到更多数学工具，但每一步都会尽量从离散形式出发、用最朴素的方式推导。</p>
+<h2 id="1-前向过程从离散到连续">1. 前向过程：从离散到连续</h2>
+<h3 id="11-为什么用-sde">1.1 为什么用 SDE</h3>
+<p>扩散模型中 $x_0\to x_T$ 的加噪过程和 $x_T\to x_0$ 的去噪过程，本质上都是<strong>随机过程</strong>，而刻画随机过程的自然工具就是随机微分方程。</p>
+<p>之前我们都是离散地看扩散模型：$x_0\to x_1\to\cdots\to x_T$。SDE 则是<strong>连续</strong>的描述，可以把前向过程改写成连续形式（和第 5 篇朗之万动力学的连续化思路一样）：</p>
+<p>$$
+dx = \underbrace{f(x,t)\,dt}_{\text{确定性部分}} + \underbrace{g(t)\,dw}_{\text{随机部分}}
+$$</p>
+<p>其中：</p>
+<ul>
+<li>$dx = \lim_{\Delta t\to0}(x_{t+\Delta t} - x_t)$，表示 $x$ 在一个无穷小时间段内的变化；</li>
+<li>$f(x,t)$：<strong>漂移系数</strong>（drift coefficient），一个向量值函数，决定数据确定性的演化趋势；</li>
+<li>$g(t)$：<strong>扩散系数</strong>（diffusion coefficient），一个标量函数，控制注入噪声的强度；</li>
+<li>$w$：标准<strong>布朗运动</strong>（Brownian motion，也叫维纳过程），一种具有独立增量和连续轨迹的随机过程。</li>
+</ul>
+<p>时间也连续化了：之前的离散步数 $1\to2\to\cdots\to T$，现在改写为 $0\to\Delta t\to2\Delta t\to\cdots\to1$，即 $t\in[0,1]$。$t=0$ 对应干净数据，$t=1$ 对应（近似）纯噪声。</p>
+<h3 id="12-布朗运动与-73">1.2 布朗运动与 $\sqrt{\Delta t}$</h3>
+<p>布朗运动的关键性质是：在任意一段长为 $\Delta t$ 的时间内，增量 $w(t+\Delta t)-w(t)$ 服从 $\mathcal{N}(0,\Delta t\,I)$，并且不同时间段的增量相互独立。所以</p>
+<p>$$
+dw \;\approx\; \sqrt{\Delta t}\;\epsilon, \qquad \epsilon\sim\mathcal{N}(0,I)
+$$</p>
+<p>注意是 $\sqrt{\Delta t}$ 而不是 $\Delta t$。这一点非常重要：它意味着随机部分的量级（$\sqrt{\Delta t}$）比确定部分（$\Delta t$）<strong>大得多</strong>，所以在做泰勒展开时，随机项要展开到二阶，因为 $(\sqrt{\Delta t}\,\epsilon)^2$ 和 $\Delta t$ 同阶。这是随机微积分（伊藤微积分）和普通微积分最大的区别，第 5 节推导 Fokker–Planck 方程时会用到。</p>
+<h3 id="13-离散形式">1.3 离散形式</h3>
+<p>于是前向 SDE 的离散形式（Euler–Maruyama 格式）是</p>
+<p>$$
+x_{t+\Delta t} = x_t + f(x_t,t)\,\Delta t + g(t)\sqrt{\Delta t}\;\epsilon, \qquad \epsilon\sim\mathcal{N}(0,I)
+$$</p>
+<ul>
+<li>$f(x_t,t)\,\Delta t$ 是<strong>确定部分</strong>，决定数据的演化趋势；</li>
+<li>$g(t)\sqrt{\Delta t}\,\epsilon$ 是<strong>随机部分</strong>，引入扩散噪声。</li>
+</ul>
+<p>之前的离散前向过程是 $x_t\to x_{t+1}$，现在的连续形式则是 $x_t\to x_{t+\Delta t}$。等价地，一步转移是一个高斯分布：</p>
+<p>$$
+p(x_{t+\Delta t}\mid x_t) = \mathcal{N}\big(x_{t+\Delta t};\; x_t + f(x_t,t)\,\Delta t,\; g^2(t)\,\Delta t\,I\big) \propto \exp\Big(-\frac{\|x_{t+\Delta t} - x_t - f(x_t,t)\,\Delta t\|^2}{2g^2(t)\,\Delta t}\Big)
+$$</p>
+<h2 id="2-反向-sde">2. 反向 SDE</h2>
+<h3 id="21-目标">2.1 目标</h3>
+<p>和 DDPM 的分析一样，有了一个连续的前向过程，我们希望有一个<strong>反向的、还原真实分布的过程</strong>：从 $t=1$ 的噪声出发，走回 $t=0$。为此需要反向一步的转移 $p(x_t\mid x_{t+\Delta t})$。</p>
+<p>（为了简洁，下面把时刻 $t$ 的边际分布 $p_t(x_t)$ 简写为 $p(x_t)$。注意它既是 $x_t$ 的函数，也是 $t$ 的函数。）</p>
+<h3 id="22-推导">2.2 推导</h3>
+<p><strong>第一步：贝叶斯公式。</strong></p>
+<p>$$
+p(x_t\mid x_{t+\Delta t}) = \frac{p(x_{t+\Delta t}\mid x_t)\;p(x_t)}{p(x_{t+\Delta t})} = p(x_{t+\Delta t}\mid x_t)\,\exp\big(\log p(x_t) - \log p(x_{t+\Delta t})\big)
+$$</p>
+<p>代入前向转移：</p>
+<p>$$
+p(x_t\mid x_{t+\Delta t}) \propto \exp\Big(-\frac{\|x_{t+\Delta t} - x_t - f(x_t,t)\,\Delta t\|^2}{2g^2(t)\,\Delta t} + \log p(x_t) - \log p(x_{t+\Delta t})\Big)
+$$</p>
+<p><strong>第二步：泰勒展开。</strong> 对 $\log p(x_{t+\Delta t})$ 在 $(x_t,t)$ 处做一阶泰勒展开。注意 $p(x_t)$ 其实是 $(x_t,t)$ 两个变量的函数，所以展开时有两项：</p>
+<p>$$
+\log p(x_{t+\Delta t}) \approx \log p(x_t) + (x_{t+\Delta t} - x_t)\cdot\nabla_{x_t}\log p(x_t) + \Delta t\,\frac{\partial}{\partial t}\log p(x_t)
+$$</p>
+<p>代入后，$\log p(x_t)$ 抵消：</p>
+<p>$$
+p(x_t\mid x_{t+\Delta t}) \propto \exp\Big(-\frac{\|x_{t+\Delta t} - x_t - f\,\Delta t\|^2}{2g^2\,\Delta t} - (x_{t+\Delta t}-x_t)\cdot\nabla_{x_t}\log p(x_t) - \Delta t\,\frac{\partial}{\partial t}\log p(x_t)\Big)
+$$</p>
+<p>（$f$、$g$ 是 $f(x_t,t)$、$g(t)$ 的简写。）</p>
+<p><strong>第三步：配方。</strong> 记 $\Delta x = x_{t+\Delta t}-x_t$，$s = \nabla_{x_t}\log p(x_t)$。把前两项合并成一个完全平方：</p>
+<p>$$
+\|\Delta x - f\Delta t\|^2 + 2g^2\Delta t\;\Delta x\cdot s = \big\|\Delta x - \big(f - g^2 s\big)\Delta t\big\|^2 + \underbrace{2g^2\Delta t^2\,f\cdot s - g^4\Delta t^2\,\|s\|^2}_{\mathcal{O}(\Delta t^2)}
+$$</p>
+<p>（直接展开右边即可验证。）除以 $2g^2\Delta t$ 之后，多出来的项是 $\mathcal{O}(\Delta t)$；最后那个 $\Delta t\,\partial_t\log p$ 也是 $\mathcal{O}(\Delta t)$。于是</p>
+<p>$$
+p(x_t\mid x_{t+\Delta t}) \propto \exp\Big(-\frac{\big\|x_{t+\Delta t} - x_t - \big[f(x_t,t) - g^2(t)\,\nabla_{x_t}\log p(x_t)\big]\Delta t\big\|^2}{2g^2(t)\,\Delta t} + \mathcal{O}(\Delta t)\Big)
+$$</p>
+<p>$\Delta t\to0$ 时，$\mathcal{O}(\Delta t)\to0$，可以忽略。</p>
+<p><strong>第四步：换成已知时刻的量。</strong> 上式中的系数都在 $t$ 时刻求值，但在反向过程中，我们已知的是 $x_{t+\Delta t}$，未知的是 $x_t$。所以要把系数中的 $t$ 换成 $t+\Delta t$。$\Delta t\to0$ 时，这种替换只带来高阶小量的误差，可以近似认为 $t\approx t+\Delta t$：</p>
+<p>$$
+p(x_t\mid x_{t+\Delta t}) \approx \mathcal{N}\Big(x_t;\; x_{t+\Delta t} - \big[f(x_{t+\Delta t},t+\Delta t) - g^2(t+\Delta t)\,\nabla\log p(x_{t+\Delta t})\big]\Delta t,\;\; g^2(t+\Delta t)\,\Delta t\,I\Big)
+$$</p>
+<p>也就是说，反向一步也是高斯：从 $x_{t+\Delta t}$ 出发，<strong>沿着 $-[f - g^2\nabla\log p]$ 的方向退一步</strong>，再加上方差为 $g^2\Delta t$ 的噪声。</p>
+<p><strong>第五步：取极限。</strong> 令 $\Delta t\to0$，得到<strong>反向 SDE</strong>：</p>
+<p>$$
+dx = \big[f(x,t) - g^2(t)\,\nabla_x\log p_t(x)\big]\,dt + g(t)\,d\bar w
+$$</p>
+<p>这里 $dt$ 是一个<strong>负的</strong>无穷小时间增量（时间从 1 流向 0），$\bar w$ 是反向时间的布朗运动。这个结果最早由 Anderson (1982) 严格证明，上面是一个启发式的推导，但结论是对的。</p>
+<h3 id="23-结论只需要-score">2.3 结论：只需要 score</h3>
+<p>整理一下：</p>
+<p>$$
+\text{前向：}\quad dx = f(x,t)\,dt + g(t)\,dw
+$$</p>
+<p>$$
+\text{反向：}\quad dx = \big[f(x,t) - g^2(t)\,\nabla_x\log p_t(x)\big]\,dt + g(t)\,d\bar w
+$$</p>
+<pre><code>          前向 SDE：dx = f dt + g dw
+  x(0) ~ p_data  ─────────────────────────▶  x(1) ~ 先验（近似高斯）
+  x(0) ~ p_data  ◀─────────────────────────  x(1) ~ 先验
+          反向 SDE：dx = [f − g²·∇log p_t] dt + g dw̄
+</code></pre>
+<p>前向过程是我们自己定义的，所以 $f$ 和 $g$ 都是已知的。<strong>反向过程中唯一不知道的，就是每个时刻边际分布的 score $\nabla_x\log p_t(x)$。</strong> 只要能估计出它，就能把前向 SDE 反过来跑，从噪声生成数据。而怎样估计 score，第 5 篇已经讲过了。</p>
+<h2 id="3-训练连续时间的去噪分数匹配">3. 训练：连续时间的去噪分数匹配</h2>
+<h3 id="31-为什么不直接算-score">3.1 为什么不直接算 score</h3>
+<p>原则上，边际分布的 score 可以写成条件分布的期望：</p>
+<p>$$
+\nabla_{x_t}\log p(x_t) = \frac{\nabla_{x_t}p(x_t)}{p(x_t)} = \frac{\mathbb{E}_{x_0}\big[\nabla_{x_t}p(x_t\mid x_0)\big]}{\mathbb{E}_{x_0}\big[p(x_t\mid x_0)\big]} = \frac{\mathbb{E}_{x_0}\big[p(x_t\mid x_0)\,\nabla_{x_t}\log p(x_t\mid x_0)\big]}{\mathbb{E}_{x_0}\big[p(x_t\mid x_0)\big]}
+$$</p>
+<p>其中 $\mathbb{E}_{x_0}$ 是对数据分布取期望。这个式子在理论上很有用（它说明边际 score 是条件 score 的加权平均，权重是 $x_0$ 的后验），但实际计算需要遍历整个数据集，计算量过大，而且对没见过的 $x_t$ 泛化不好。</p>
+<h3 id="32-训练目标">3.2 训练目标</h3>
+<p>所以，和之前一样，用一个神经网络 $s_\theta(x,t)$ 去学习 score。第 5 篇的去噪分数匹配告诉我们，可以用<strong>条件分布的 score</strong> 作为回归目标，学到的就是边际分布的 score。推广到连续时间：</p>
+<p>$$
+\mathcal{L}(\theta) = \mathbb{E}_{t\sim\mathcal{U}[0,1]}\Big\{\lambda(t)\;\mathbb{E}_{x_0\sim p_\text{data}}\,\mathbb{E}_{x_t\sim p(x_t|x_0)}\Big[\big\|s_\theta(x_t,t) - \nabla_{x_t}\log p(x_t\mid x_0)\big\|_2^2\Big]\Big\}
+$$</p>
+<p>内层的期望写成积分是</p>
+<p>$$
+\int\mathbb{E}_{x_0}\Big[p(x_t\mid x_0)\,\big\|s_\theta(x_t,t) - \nabla_{x_t}\log p(x_t\mid x_0)\big\|^2\Big]dx_t = \mathbb{E}_{x_0,\,x_t\sim p(x_t|x_0)}\Big[\big\|s_\theta(x_t,t) - \nabla_{x_t}\log p(x_t\mid x_0)\big\|^2\Big]
+$$</p>
+<p>$\lambda(t)&gt;0$ 是一个权重函数，和 NCSN 一样，通常取 $\lambda(t)\propto1/\mathbb{E}\big[\|\nabla_{x_t}\log p(x_t\mid x_0)\|^2\big]$，也就是条件分布的方差，让各个时刻的损失量级相当。</p>
+<h3 id="33-什么时候条件分布有闭式解">3.3 什么时候条件分布有闭式解</h3>
+<p>训练需要能从 $p(x_t\mid x_0)$ 采样、并算出它的 score。这个条件分布（论文中称为<strong>扰动核</strong>，perturbation kernel）一般没有闭式解，但当 <strong>$f(x,t)$ 是 $x$ 的线性函数</strong>时，SDE 是线性的，$p(x_t\mid x_0)$ 一定是高斯。</p>
+<p>对 $f(x,t)=f(t)\,x$，记 $x_t$ 的条件均值为 $m(t)$、每一维的条件方差为 $v(t)$，对离散形式取期望和方差再令 $\Delta t\to0$，可以得到它们满足的常微分方程：</p>
+<p>$$
+\frac{dm}{dt} = f(t)\,m, \qquad \frac{dv}{dt} = 2f(t)\,v + g^2(t)
+$$</p>
+<p>（方差方程来自 $\mathrm{Var}\big[(1+f\Delta t)\,x + g\sqrt{\Delta t}\,\epsilon\big] = (1+f\Delta t)^2 v + g^2\Delta t$。）初值为 $m(0)=x_0$，$v(0)=0$。解出 $m(t)$ 和 $v(t)$ 后，$p(x_t\mid x_0) = \mathcal{N}(m(t),v(t)I)$，它的 score 就是 $-(x_t-m(t))/v(t)$，训练和 DDPM 一样简单。下面的两个例子都属于这种情况。</p>
+<h2 id="4-ve-sde-与-vp-sdencsn-和-ddpm-的统一">4. VE-SDE 与 VP-SDE：NCSN 和 DDPM 的统一</h2>
+<p>现在我们有了一个一般的前向过程和反向过程的框架。前向过程是我们自己定义的，$f(x,t)$ 和 $g(t)$ 都已知；唯一未知的 $\nabla_x\log p_t(x)$ 就是 score，第 5 篇已经介绍过如何估计。</p>
+<p>能不能把 DDPM 和 NCSN 都归入这个框架？只需要看它们对应的 $f$、$g$ 应该取什么形式。我们从前向 SDE 的离散形式出发：</p>
+<p>$$
+x_{t+\Delta t} = x_t + f(x_t,t)\,\Delta t + g(t)\sqrt{\Delta t}\;\epsilon
+$$</p>
+<h3 id="41-ncsn-ve-sde">4.1 NCSN → VE-SDE</h3>
+<p>NCSN 的扩散公式是 $x_t = x_0 + \sigma_t\,\epsilon$，数据本身不缩放，只叠加噪声。噪声标准差 $\sigma_t$ 随 $t$ 增大，到最后 $\sigma_1$ 非常大，$x_1$ 主要由噪声主导，所以称为 <strong>Variance Exploding（VE，方差爆炸）SDE</strong>。</p>
+<p>写出相邻两个时刻之间的关系。$x_{t+\Delta t}$ 和 $x_t$ 的噪声方差分别是 $\sigma_{t+\Delta t}^2$ 和 $\sigma_t^2$，由于独立高斯的方差可以相加，从 $x_t$ 到 $x_{t+\Delta t}$ 需要补上方差为 $\sigma_{t+\Delta t}^2-\sigma_t^2$ 的噪声：</p>
+<p>$$
+\begin{aligned}
+x_{t+\Delta t} &amp;= x_t + \sqrt{\sigma_{t+\Delta t}^2 - \sigma_t^2}\;\epsilon \\
+&amp;= x_t + \sqrt{\frac{\sigma_{t+\Delta t}^2 - \sigma_t^2}{\Delta t}\cdot\Delta t}\;\epsilon \\
+&amp;= x_t + \sqrt{\frac{\Delta\sigma_t^2}{\Delta t}}\,\sqrt{\Delta t}\;\epsilon
+\end{aligned}
+$$</p>
+<p>和离散形式对比，得到 NCSN 的 SDE 形式：</p>
+<p>$$
+f(x,t) = 0, \qquad g(t) = \sqrt{\frac{d\,\sigma^2(t)}{dt}}
+$$</p>
+<p>注意 $g(t)$ 是 $\sigma^2(t)$ 导数的<strong>平方根</strong>。扰动核为 $p(x_t\mid x_0) = \mathcal{N}\big(x_0,\;(\sigma^2(t)-\sigma^2(0))I\big)$。</p>
+<p>NCSN 的噪声级别是几何级数，连续化后 $\sigma(t) = \sigma_\text{min}\big(\frac{\sigma_\text{max}}{\sigma_\text{min}}\big)^t$。</p>
+<h3 id="42-ddpm-vp-sde">4.2 DDPM → VP-SDE</h3>
+<p>DDPM 的扩散公式是 $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$。$\sqrt{\bar\alpha_t}$ 对信号进行了压制，而总方差始终保持在 1 附近，并不发散，所以称为 <strong>Variance Preserving（VP，方差保持）SDE</strong>。</p>
+<p>DDPM 的一步为</p>
+<p>$$
+x_{i+1} = \sqrt{1-\beta_{i+1}}\;x_i + \sqrt{\beta_{i+1}}\;\epsilon, \qquad i = 0,1,\dots,T-1
+$$</p>
+<p>为了把离散公式转换为连续形式，定义缩放后的序列 $\bar\beta_i = T\beta_i$（$i=1,\dots,T$），改写为</p>
+<p>$$
+x_{i+1} = \sqrt{1-\frac{\bar\beta_{i+1}}{T}}\;x_i + \sqrt{\frac{\bar\beta_{i+1}}{T}}\;\epsilon
+$$</p>
+<p>当步数 $T\to\infty$ 时，序列 $\{\bar\beta_i\}_{i=1}^T$ 变成一个连续函数 $\beta(t)$，$t\in[0,1]$，满足 $\beta\big(\frac iT\big) = \bar\beta_i$，步长 $\Delta t = \frac1T$。于是 $\beta_i = \beta(t)\Delta t$，上式变成</p>
+<p>$$
+x_{t+\Delta t} = \sqrt{1-\beta(t+\Delta t)\,\Delta t}\;x_t + \sqrt{\beta(t+\Delta t)\,\Delta t}\;\epsilon
+$$</p>
+<p>利用近似 $(1-u)^a\approx1-au$（$u\to0$），以及 $\beta(t+\Delta t)\approx\beta(t)$：</p>
+<p>$$
+\begin{aligned}
+x_{t+\Delta t} &amp;\approx \Big(1 - \frac12\beta(t+\Delta t)\,\Delta t\Big)x_t + \sqrt{\beta(t+\Delta t)\,\Delta t}\;\epsilon \\
+&amp;\approx x_t - \frac12\beta(t)\,x_t\,\Delta t + \sqrt{\beta(t)}\,\sqrt{\Delta t}\;\epsilon
+\end{aligned}
+$$</p>
+<p>和离散形式对比，得到 DDPM 的 SDE 形式：</p>
+<p>$$
+f(x,t) = -\frac12\beta(t)\,x, \qquad g(t) = \sqrt{\beta(t)}
+$$</p>
+<p>漂移项 $-\frac12\beta(t)\,x$ 在加噪的同时把信号往原点拉。</p>
+<p><strong>为什么叫"方差保持"？</strong> 用 3.3 节的方差方程，把 $x_0$ 也看成随机的，设 $x_t$ 的总方差为 $V(t)$，则</p>
+<p>$$
+\frac{dV}{dt} = 2\cdot\Big(-\frac12\beta(t)\Big)V + \beta(t) = \beta(t)\,\big(1 - V\big)
+$$</p>
+<p>如果数据的方差 $V(0)=1$，那么 $V(t)\equiv1$；即使不为 1，$V(t)$ 也会指数收敛到 1。所以总方差始终被"保持"在 1 附近。对比 VE-SDE，$dV/dt = g^2 &gt;0$，方差单调增长，最终"爆炸"。</p>
+<p>VP-SDE 的扰动核为</p>
+<p>$$
+p(x_t\mid x_0) = \mathcal{N}\Big(x_0\,e^{-\frac12\int_0^t\beta(s)ds},\;\big(1-e^{-\int_0^t\beta(s)ds}\big)I\Big)
+$$</p>
+<p>对照 DDPM 的 $\mathcal{N}(\sqrt{\bar\alpha_t}\,x_0,(1-\bar\alpha_t)I)$，连续时间下 $\bar\alpha(t) = e^{-\int_0^t\beta(s)ds}$。这和离散时 $\bar\alpha_t=\prod(1-\beta_i)$、$\log\bar\alpha_t = \sum\log(1-\beta_i)\approx-\sum\beta_i$ 是一致的。</p>
+<p>SDE 论文还提出了第三种 <strong>sub-VP SDE</strong>：$f$ 与 VP 相同，$g(t) = \sqrt{\beta(t)\big(1-e^{-2\int_0^t\beta(s)ds}\big)}$。它的方差始终被 VP-SDE 的方差上界住，在似然指标上表现更好。</p>
+<p><strong>结论：NCSN 和 DDPM 只是 SDE 框架下不同的 $f$、$g$。</strong></p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>VE-SDE</th>
+<th>VP-SDE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>对应的离散模型</td>
+<td>NCSN（SMLD）</td>
+<td>DDPM</td>
+</tr>
+<tr>
+<td>漂移 $f(x,t)$</td>
+<td>$0$</td>
+<td>$-\frac12\beta(t)\,x$</td>
+</tr>
+<tr>
+<td>扩散 $g(t)$</td>
+<td>$\sqrt{d\sigma^2(t)/dt}$</td>
+<td>$\sqrt{\beta(t)}$</td>
+</tr>
+<tr>
+<td>扰动核均值</td>
+<td>$x_0$</td>
+<td>$\sqrt{\bar\alpha(t)}\,x_0$</td>
+</tr>
+<tr>
+<td>扰动核方差</td>
+<td>$\sigma^2(t)-\sigma^2(0)$</td>
+<td>$1-\bar\alpha(t)$</td>
+</tr>
+<tr>
+<td>终点先验</td>
+<td>$\mathcal{N}(0,\sigma_\text{max}^2I)$</td>
+<td>$\mathcal{N}(0,I)$</td>
+</tr>
+</tbody>
+</table>
+<h3 id="43-ncsn-和-ddpm-完全等价">4.3 NCSN 和 DDPM 完全等价</h3>
+<p>VE 和 VP 看起来不同，但其实只差一个随时间变化的缩放。对 NCSN 的扩散公式 $x_t = x_0 + \sigma_t\,\epsilon$，两边同除以 $\sqrt{1+\sigma_t^2}$：</p>
+<p>$$
+\frac{x_t}{\sqrt{1+\sigma_t^2}} = \frac{1}{\sqrt{1+\sigma_t^2}}\,x_0 + \frac{\sigma_t}{\sqrt{1+\sigma_t^2}}\,\epsilon
+$$</p>
+<p>令</p>
+<p>$$
+y_t = \frac{x_t}{\sqrt{1+\sigma_t^2}}, \qquad \sqrt{\bar\alpha_t} = \frac{1}{\sqrt{1+\sigma_t^2}}
+$$</p>
+<p>则 $\sqrt{1-\bar\alpha_t} = \frac{\sigma_t}{\sqrt{1+\sigma_t^2}}$，于是</p>
+<p>$$
+y_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\;\epsilon
+$$</p>
+<p>正是 DDPM 的形式。<strong>VE 过程的 $x_t$ 除以 $\sqrt{1+\sigma_t^2}$，就是 VP 过程的 $x_t$。</strong> 两者描述的是同一族加噪分布，只是坐标的缩放不同；在一个框架下训练出的网络，经过简单的换算可以在另一个框架下使用。</p>
+<h3 id="44-ddpm-从没估计过-score怎么放进-sde-框架">4.4 DDPM 从没估计过 score，怎么放进 SDE 框架？</h3>
+<p>最后解释一个问题：DDPM 训练的是噪声预测网络 $\epsilon_\theta(x_t,t)$，从来没有显式估计过 score，那它怎么用到 SDE 框架里？</p>
+<p>这个问题第 5 篇已经回答了。对 DDPM 的扰动核，</p>
+<p>$$
+\nabla_{x_t}\log p(x_t\mid x_0) = -\frac{x_t - \sqrt{\bar\alpha_t}\,x_0}{1-\bar\alpha_t}, \qquad \epsilon = \frac{x_t - \sqrt{\bar\alpha_t}\,x_0}{\sqrt{1-\bar\alpha_t}}
+$$</p>
+<p>所以 DDPM 的回归目标 $\epsilon$ 和条件 score 之间只差一个系数，于是有一个重要的换算公式：</p>
+<p>$$
+s_\theta(x_t,t) = -\frac{1}{\sqrt{1-\bar\alpha_t}}\;\epsilon_\theta(x_t,t)
+$$</p>
+<p><strong>噪声的方向就是 score 的反方向。</strong> 所以 score-based 模型的 score 网络和 DDPM 的噪声网络完全可以互相使用。</p>
+<h2 id="5-fokkerplanck-方程从轨迹到边际分布">5. Fokker–Planck 方程：从轨迹到边际分布</h2>
+<h3 id="51-动机sde-版的-ddim">5.1 动机：SDE 版的 DDIM</h3>
+<p>SDE 给出了扩散模型训练和生成的一般框架，可以说是 DDPM 的一个非常一般化的推广。一个很自然的问题是：SDE 能不能也像 DDIM 那样推广？DDIM 的关键在于不考虑前向过程 $p(x_t\mid x_{t-1})$，而只考虑边际分布 $p(x_t\mid x_0)$。对应到 SDE 上，我们需要找到<strong>描述边际分布的方程</strong>。</p>
+<p>这个方程就是 <strong>Fokker–Planck 方程</strong>（FP 方程）。它是一个偏微分方程，描述了一条 SDE 对应的边际分布 $p_t(x)$ 如何随时间演化：对前向 SDE，给定初始分布 $p_0(x)$，就能确定任意时刻的 $p_t(x)$。</p>
+<h3 id="52-工具dirac-函数">5.2 工具：Dirac 函数</h3>
+<p>前向 SDE 的离散形式</p>
+<p>$$
+x_{t+\Delta t} = x_t + f_t(x_t)\,\Delta t + g_t\sqrt{\Delta t}\;\epsilon, \qquad \epsilon\sim\mathcal{N}(0,I)
+$$</p>
+<p>描述的是<strong>随机变量</strong> $x_{t+\Delta t}$、$x_t$、$\epsilon$ 之间的关系（这里把 $f(x,t)$、$g(t)$ 写成 $f_t(x)$、$g_t$）。我们可以方便地对两边求期望，但我们想要的不是期望，而是<strong>分布</strong> $p_{t+\Delta t}(x)$ 所满足的关系。怎样把分布写成期望的形式？答案是 <strong>Dirac 函数</strong> $\delta(\cdot)$：</p>
+<p>$$
+p(x) = \int\delta(x-y)\,p(y)\,dy = \mathbb{E}_y\big[\delta(x-y)\big]
+$$</p>
+<p>Dirac 函数的严格定义属于泛函分析的内容，但我们通常把它当作普通函数来处理，一般都能得到正确的结果。由上式还可以得到，对任意函数 $h(x)$：</p>
+<p>$$
+p(x)\,h(x) = \int\delta(x-y)\,p(y)\,h(y)\,dy = \mathbb{E}_y\big[\delta(x-y)\,h(y)\big]
+$$</p>
+<p>直接对两边关于 $x$ 求导：</p>
+<p>$$
+\nabla_x\big[p(x)\,h(x)\big] = \mathbb{E}_y\big[h(y)\,\nabla_x\delta(x-y)\big]
+$$</p>
+<p>这是后面要用到的关键性质：<strong>对 Dirac 函数求的导数，在取期望后可以转移到它所乘的函数和密度的乘积上。</strong></p>
+<h3 id="53-推导-fokkerplanck-方程">5.3 推导 Fokker–Planck 方程</h3>
+<p>由离散形式，</p>
+<p>$$
+\delta(x - x_{t+\Delta t}) = \delta\big(x - x_t - f_t(x_t)\,\Delta t - g_t\sqrt{\Delta t}\;\epsilon\big)
+$$</p>
+<p>把 $\delta(\cdot)$ 当作普通函数，在 $x - x_t$ 处做泰勒展开。记扰动 $u = f_t(x_t)\Delta t + g_t\sqrt{\Delta t}\,\epsilon$，展开到二阶，只保留不超过 $\mathcal{O}(\Delta t)$ 的项：</p>
+<p>$$
+\delta(x - x_{t+\Delta t}) \approx \delta(x-x_t) - \big(f_t(x_t)\,\Delta t + g_t\sqrt{\Delta t}\,\epsilon\big)\cdot\nabla_x\delta(x-x_t) + \frac12\big(g_t\sqrt{\Delta t}\;\epsilon\cdot\nabla_x\big)^2\delta(x-x_t)
+$$</p>
+<p>二阶项里只保留了 $\epsilon$ 的部分，因为 $f\Delta t$ 的平方和交叉项都是 $\mathcal{O}(\Delta t^{3/2})$ 或更高阶；而 $(g_t\sqrt{\Delta t}\,\epsilon)^2$ 是 $\mathcal{O}(\Delta t)$，必须保留。这正是 1.2 节说的"随机项要展开到二阶"。</p>
+<p>两边对 $x_t$ 和 $\epsilon$ 求期望。$\epsilon$ 与 $x_t$ 独立，$\mathbb{E}[\epsilon]=0$ 消掉一阶的 $\epsilon$ 项，$\mathbb{E}[\epsilon\epsilon^\top]=I$ 把二阶项变成拉普拉斯算子：</p>
+<p>$$
+\begin{aligned}
+p_{t+\Delta t}(x) &amp;= \mathbb{E}_{x_{t+\Delta t}}\big[\delta(x - x_{t+\Delta t})\big] \\
+&amp;\approx \mathbb{E}_{x_t,\epsilon}\Big[\delta(x-x_t) - \big(f_t(x_t)\,\Delta t + g_t\sqrt{\Delta t}\,\epsilon\big)\cdot\nabla_x\delta(x-x_t) + \frac12\big(g_t\sqrt{\Delta t}\,\epsilon\cdot\nabla_x\big)^2\delta(x-x_t)\Big] \\
+&amp;= \mathbb{E}_{x_t}\Big[\delta(x-x_t) - f_t(x_t)\,\Delta t\cdot\nabla_x\delta(x-x_t) + \frac12 g_t^2\,\Delta t\;\nabla_x\cdot\nabla_x\delta(x-x_t)\Big] \\
+&amp;= p_t(x) - \Delta t\;\nabla_x\cdot\big[f_t(x)\,p_t(x)\big] + \frac12 g_t^2\,\Delta t\;\nabla_x\cdot\nabla_x\,p_t(x)
+\end{aligned}
+$$</p>
+<p>最后一步用了 5.2 节的性质（$\delta$ 的导数转移到 $f_t\,p_t$ 和 $p_t$ 上）。两边减去 $p_t(x)$、除以 $\Delta t$，取 $\Delta t\to0$ 的极限：</p>
+<p>$$
+\frac{\partial}{\partial t}p_t(x) = -\nabla_x\cdot\big[f_t(x)\,p_t(x)\big] + \frac12 g_t^2\;\nabla_x\cdot\nabla_x\,p_t(x)
+$$</p>
+<p>这就是前向 SDE 所对应的 <strong>Fokker–Planck 方程</strong>，描述了边际分布的演化。右边第一项（"漂移项"）描述概率密度被 $f$ 搬运；第二项（"扩散项"，$\nabla_x\cdot\nabla_x$ 即拉普拉斯算子 $\Delta$）描述概率密度因噪声而向四周扩散、被抹平。</p>
+<h3 id="54-一族共享边际分布的-sde">5.4 一族共享边际分布的 SDE</h3>
+<p>这里并不打算研究怎么求解这个偏微分方程，只是借助它来引出一个<strong>等价变换</strong>。</p>
+<p>利用 $\nabla_x p_t = p_t\,\nabla_x\log p_t$，对任意满足 $\sigma_t^2\le g_t^2$ 的函数 $\sigma_t$，把扩散项拆成两部分：$\frac12 g_t^2 = \frac12(g_t^2-\sigma_t^2) + \frac12\sigma_t^2$，其中前一部分写成散度形式并入漂移项：</p>
+<p>$$
+\begin{aligned}
+\frac{\partial}{\partial t}p_t(x) &amp;= -\nabla_x\cdot\Big[f_t(x)\,p_t(x) - \frac12\big(g_t^2-\sigma_t^2\big)\nabla_x p_t(x)\Big] + \frac12\sigma_t^2\;\nabla_x\cdot\nabla_x\,p_t(x) \\
+&amp;= -\nabla_x\cdot\Big[\Big(f_t(x) - \frac12\big(g_t^2-\sigma_t^2\big)\nabla_x\log p_t(x)\Big)p_t(x)\Big] + \frac12\sigma_t^2\;\nabla_x\cdot\nabla_x\,p_t(x)
+\end{aligned}
+$$</p>
+<p>这个方程和原来的 FP 方程<strong>完全等价</strong>（只是把同一个式子换了个写法）。但从形式上看，它又相当于把原来 FP 方程中的 $f_t(x)$ 换成了 $f_t(x) - \frac12(g_t^2-\sigma_t^2)\nabla_x\log p_t(x)$，$g_t$ 换成了 $\sigma_t$。由于 FP 方程和 SDE 是一一对应的，它就对应于另一条 SDE：</p>
+<p>$$
+dx = \Big(f_t(x) - \frac12\big(g_t^2 - \sigma_t^2\big)\nabla_x\log p_t(x)\Big)dt + \sigma_t\,dw
+$$</p>
+<p>但两个 FP 方程是完全等价的，这意味着<strong>原来的前向 SDE 和这一条 SDE，对应的边际分布 $p_t(x)$ 完全相同！</strong></p>
+<p>这个结果告诉我们：<strong>不同噪声强度的前向过程，可以产生一模一样的边际分布。</strong> 两条 SDE 的单条轨迹不同，但在每一个时刻，粒子群的整体分布完全一样。这正是 DDIM 中"保持边际、换一种过程"的连续版本，可以看作 DDIM 的升级版。（第 6.4 节会证明，当 $f_t(x)$ 是 $x$ 的线性函数时，它和 DDIM 完全等价。）</p>
+<p>由第 2 节的结果，这条 SDE 对应的反向 SDE 为</p>
+<p>$$
+dx = \Big(f_t(x) - \frac12\big(g_t^2 + \sigma_t^2\big)\nabla_x\log p_t(x)\Big)dt + \sigma_t\,d\bar w
+$$</p>
+<p>（把新的漂移 $\tilde f = f - \frac12(g^2-\sigma^2)\nabla\log p$ 和新的扩散 $\sigma$ 代入 $d x = [\tilde f - \sigma^2\nabla\log p]dt + \sigma d\bar w$ 即得。）$\sigma_t = g_t$ 时就是第 2 节的反向 SDE。</p>
+<h2 id="6-概率流-ode">6. 概率流 ODE</h2>
+<h3 id="61-277sde-退化为-ode">6.1 $\sigma_t=0$：SDE 退化为 ODE</h3>
+<p>上面说明我们可以自由改变采样过程的噪声强度。特别考虑 $\sigma_t = 0$ 的极端情形，此时随机项消失，<strong>SDE 退化为常微分方程（ODE）</strong>：</p>
+<p>$$
+\frac{dx}{dt} = f_t(x) - \frac12 g_t^2\,\nabla_x\log p_t(x)
+$$</p>
+<p>这个 ODE 称为<strong>概率流 ODE</strong>（probability flow ODE）。实践中 $\nabla_x\log p_t(x)$ 要用神经网络 $s_\theta(x,t)$ 来近似，所以它也是一个<strong>神经 ODE</strong>（Neural ODE）。</p>
+<p>注意 $\sigma_t=0$ 时，5.4 节的"前向"和"反向"方程是<strong>同一个方程</strong>。也就是说，这条 ODE 既描述了从数据到噪声的确定性变换，也描述了从噪声到数据的逆变换，只是积分方向相反。</p>
+<p>对 VP-SDE，代入 $f=-\frac12\beta(t)x$，$g^2=\beta(t)$：</p>
+<p>$$
+\frac{dx}{dt} = -\frac12\beta(t)\Big[x + \nabla_x\log p_t(x)\Big] = -\frac12\beta(t)\Big[x - \frac{\epsilon_\theta(x,t)}{\sqrt{1-\bar\alpha(t)}}\Big]
+$$</p>
+<p>对 VE-SDE，代入 $f=0$，$g^2 = d\sigma^2/dt$：</p>
+<p>$$
+\frac{dx}{dt} = -\frac12\,\frac{d\sigma^2(t)}{dt}\,\nabla_x\log p_t(x) = -\sigma(t)\,\dot\sigma(t)\,\nabla_x\log p_t(x)
+$$</p>
+<h3 id="62-为什么要特别研究-286">6.2 为什么要特别研究 $\sigma_t=0$</h3>
+<p><strong>1. 确定且可逆，和 Flow 模型一致。</strong> 此时变换过程不带噪声，从 $x_0$ 到 $x_1$ 是一个确定性变换，直接反向求解 ODE 就能得到从 $x_1$ 到 $x_0$ 的逆变换，也是确定性的。这和 <strong>Flow 模型</strong>完全一致：通过一个可逆变换把噪声变成样本。所以概率流 ODE 让我们可以把扩散模型和 Flow 模型的结果对应起来，享受 Flow 模型的好处：</p>
+<ul>
+<li><strong>隐变量表征</strong>：每个数据点 $x_0$ 都对应唯一的噪声 $x_1$，可以把真实图像编码到噪声空间；</li>
+<li><strong>图像编辑与插值</strong>：在噪声空间里做插值、编辑，再解码回图像空间；</li>
+<li><strong>唯一可辨识的编码</strong>：在数据分布和网络都足够好的情况下，编码由数据分布决定，与具体的网络结构关系不大。</li>
+</ul>
+<p><strong>2. 精确的似然计算。</strong> Flow 模型的一个核心优势是可以精确计算对数似然。对于 ODE $\frac{dx}{dt}=\tilde f(x,t)$，有"瞬时变量替换公式"（Neural ODE）：</p>
+<p>$$
+\log p_0(x_0) = \log p_1(x_1) + \int_0^1 \nabla_x\cdot\tilde f(x_t,t)\,dt
+$$</p>
+<p>其中 $\tilde f$ 是概率流 ODE 的右侧，$x_t$ 是从 $x_0$ 出发沿 ODE 积分的轨迹。散度 $\nabla_x\cdot\tilde f$ 在高维时很难直接算，可以用 Skilling–Hutchinson 迹估计 $\mathbb{E}_v[v^\top\nabla_x\tilde f\,v]$（和第 5 篇切片分数匹配是同一个技巧）无偏估计。这样就得到了扩散模型<strong>精确的</strong>对数似然，而不是 DDPM 那样的一个下界。SDE 论文用这个方法在 CIFAR-10 上得到了约 3 bits/dim 的负对数似然，当时是同类模型中最好的。</p>
+<p><strong>3. 可以用成熟的 ODE 求解器加速。</strong> 从 $x_1$ 到 $x_0$ 的变换由一个 ODE 描述，这意味着可以用各种高阶的 ODE 数值算法来加速。原则上 SDE 的求解也有一些加速方法，但 SDE 的数值方法远不如 ODE 成熟。SDE 论文直接用通用的自适应步长求解器（RK45），只需要几十到一两百次网络前向，就能得到和上千步 SDE 采样相当的质量；还可以通过调节误差容限，在速度和质量之间自由取舍。</p>
+<p>总的来说，相比 SDE，ODE 在理论分析和实际求解中都更简单直接。</p>
+<h3 id="63-sde-与-ode-的对比">6.3 SDE 与 ODE 的对比</h3>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>反向 SDE</th>
+<th>概率流 ODE</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>方程</td>
+<td>$dx = [f - g^2\nabla\log p_t]dt + g\,d\bar w$</td>
+<td>$dx = [f - \frac12 g^2\nabla\log p_t]dt$</td>
+</tr>
+<tr>
+<td>score 前的系数</td>
+<td>$g^2$</td>
+<td>$\frac12 g^2$</td>
+</tr>
+<tr>
+<td>随机性</td>
+<td>每步注入噪声</td>
+<td>完全确定</td>
+</tr>
+<tr>
+<td>边际分布</td>
+<td>$p_t(x)$</td>
+<td>相同的 $p_t(x)$</td>
+</tr>
+<tr>
+<td>可逆</td>
+<td>否</td>
+<td>是</td>
+</tr>
+<tr>
+<td>似然</td>
+<td>只能算下界</td>
+<td>可以精确计算</td>
+</tr>
+<tr>
+<td>数值求解</td>
+<td>需要较多步</td>
+<td>可用高阶求解器，步数少</td>
+</tr>
+<tr>
+<td>对误差的鲁棒性</td>
+<td>随机噪声能"冲刷"掉部分累积误差</td>
+<td>误差会沿轨迹累积</td>
+</tr>
+</tbody>
+</table>
+<p>最后一行值得一提：实践中，SDE 采样在步数足够多时通常略好于 ODE 采样，因为随机项能起到一定的纠错作用；ODE 采样的优势在于步数少时质量更高。这和第 4 篇 DDIM 的实验观察是一致的。</p>
+<h3 id="64-ddim-就是概率流-ode-的欧拉离散化">6.4 DDIM 就是概率流 ODE 的欧拉离散化</h3>
+<p>第 4 篇最后提到，DDIM（$\eta=0$）其实是在沿一条 ODE 的轨迹走。现在可以严格地验证这一点。</p>
+<p>对 VP-SDE 的概率流 ODE，做变量替换：</p>
+<p>$$
+\bar x = \frac{x}{\sqrt{\bar\alpha(t)}}, \qquad \bar\sigma = \sqrt{\frac{1-\bar\alpha(t)}{\bar\alpha(t)}}
+$$</p>
+<p>由 $\bar\alpha(t) = e^{-\int_0^t\beta(s)ds}$ 得 $\frac{d\bar\alpha}{dt} = -\beta(t)\,\bar\alpha$。分别计算：</p>
+<p>$$
+\frac{d\bar x}{dt} = \frac{1}{\sqrt{\bar\alpha}}\frac{dx}{dt} + \frac{\beta}{2\sqrt{\bar\alpha}}\,x = \frac{1}{\sqrt{\bar\alpha}}\cdot\frac{\beta}{2}\,\frac{\epsilon_\theta}{\sqrt{1-\bar\alpha}} = \frac{\beta\,\epsilon_\theta}{2\sqrt{\bar\alpha}\sqrt{1-\bar\alpha}}
+$$</p>
+<p>（ODE 中的 $-\frac12\beta x$ 正好和缩放产生的 $+\frac12\beta x$ 抵消。）而由 $\bar\sigma^2 = 1/\bar\alpha - 1$，</p>
+<p>$$
+2\bar\sigma\,\frac{d\bar\sigma}{dt} = \frac{\beta}{\bar\alpha} \quad\Longrightarrow\quad \frac{d\bar\sigma}{dt} = \frac{\beta}{2\bar\alpha\,\bar\sigma} = \frac{\beta}{2\sqrt{\bar\alpha}\sqrt{1-\bar\alpha}}
+$$</p>
+<p>两式相除，得到一个极其简洁的 ODE：</p>
+<p>$$
+\frac{d\bar x}{d\bar\sigma} = \epsilon_\theta(x, t)
+$$</p>
+<p>对它用<strong>欧拉法</strong>从 $\bar\sigma_t$ 走到 $\bar\sigma_{t-1}$：</p>
+<p>$$
+\bar x_{t-1} = \bar x_t + \big(\bar\sigma_{t-1} - \bar\sigma_t\big)\,\epsilon_\theta(x_t,t)
+$$</p>
+<p>换回原变量：</p>
+<p>$$
+\frac{x_{t-1}}{\sqrt{\bar\alpha_{t-1}}} = \frac{x_t}{\sqrt{\bar\alpha_t}} + \Big(\sqrt{\frac{1-\bar\alpha_{t-1}}{\bar\alpha_{t-1}}} - \sqrt{\frac{1-\bar\alpha_t}{\bar\alpha_t}}\Big)\epsilon_\theta(x_t,t)
+$$</p>
+<p>两边乘以 $\sqrt{\bar\alpha_{t-1}}$，整理得</p>
+<p>$$
+x_{t-1} = \sqrt{\bar\alpha_{t-1}}\underbrace{\Big(\frac{x_t - \sqrt{1-\bar\alpha_t}\,\epsilon_\theta(x_t,t)}{\sqrt{\bar\alpha_t}}\Big)}_{\hat x_0} + \sqrt{1-\bar\alpha_{t-1}}\;\epsilon_\theta(x_t,t)
+$$</p>
+<p><strong>这正是 $\eta=0$ 的 DDIM 更新公式。</strong> 所以 DDIM 就是概率流 ODE 在 $(\bar x,\bar\sigma)$ 坐标下的一阶欧拉离散化。这也解释了 DDIM 的所有性质：确定性、可逆、步长大了误差变大。</p>
+<p>更进一步，这个 ODE 在 $(\bar x,\bar\sigma)$ 坐标下的右边只有 $\epsilon_\theta$，这种"半线性"结构可以被充分利用：<strong>DPM-Solver</strong> 把 ODE 的解写成关于 $\log$ 信噪比的指数积分，对 $\epsilon_\theta$ 做泰勒展开，得到二阶、三阶的求解器，10 到 20 步就能得到很好的样本。</p>
+<h2 id="7-采样器">7. 采样器</h2>
+<p>有了 SDE 和 ODE 两种视角，就有了多种采样方法。</p>
+<h3 id="71-反向扩散采样器">7.1 反向扩散采样器</h3>
+<p>直接对反向 SDE 做 Euler–Maruyama 离散化：</p>
+<p>$$
+x_{t-\Delta t} = x_t - \big[f(x_t,t) - g^2(t)\,s_\theta(x_t,t)\big]\Delta t + g(t)\sqrt{\Delta t}\;z, \qquad z\sim\mathcal{N}(0,I)
+$$</p>
+<p>对 VP-SDE，这一步是</p>
+<p>$$
+x_{t-\Delta t} = x_t + \frac12\beta(t)\,x_t\,\Delta t + \beta(t)\,s_\theta(x_t,t)\,\Delta t + \sqrt{\beta(t)\,\Delta t}\;z
+$$</p>
+<p>可以验证，DDPM 的祖先采样公式 $x_{t-1} = \frac{1}{\sqrt{\alpha_t}}\big(x_t + \beta_t\,s_\theta\big) + \sqrt{\beta_t}\,z$（把 $\epsilon_\theta$ 换成 $s_\theta$）在 $\beta_t$ 很小时，一阶展开 $\frac{1}{\sqrt{1-\beta_t}}\approx1+\frac12\beta_t$ 后与上式一致。<strong>DDPM 的采样就是反向 VP-SDE 的一种离散化。</strong></p>
+<h3 id="72-预测-校正采样器predictorcorrector">7.2 预测-校正采样器（Predictor–Corrector）</h3>
+<p>SDE 论文提出的 PC 采样器结合了两类方法：</p>
+<ul>
+<li><strong>预测器</strong>（Predictor）：用某种数值格式沿反向 SDE（或 ODE）走一步，从 $t$ 到 $t-\Delta t$；</li>
+<li><strong>校正器</strong>（Corrector）：在新的噪声水平 $t-\Delta t$ 上，用第 5 篇的<strong>朗之万动力学</strong>跑若干步。由于此时已经知道这一时刻分布的 score，朗之万动力学能把样本"拉回"正确的边际分布 $p_{t-\Delta t}$，修正预测器累积的误差。</li>
+</ul>
+<p>算法：</p>
+<ol>
+<li>采样 $x_N\sim p_1$（先验）</li>
+<li><strong>for</strong> $i = N-1,\dots,0$ <strong>do</strong></li>
+<li><strong>预测</strong>：$x_i\leftarrow$ 反向 SDE 从 $x_{i+1}$ 走一步</li>
+<li><strong>for</strong> $j = 1,\dots,M$ <strong>do</strong></li>
+<li><strong>校正</strong>：$z\sim\mathcal{N}(0,I)$，$x_i\leftarrow x_i + \delta_i\,s_\theta(x_i,t_i) + \sqrt{2\delta_i}\;z$</li>
+<li><strong>end for</strong></li>
+<li><strong>end for</strong></li>
+<li><strong>return</strong> $x_0$</li>
+</ol>
+<p>校正步的步长 $\delta_i$ 通常根据一个目标"信噪比" $r$ 自适应地选取：$\delta_i = 2\big(r\,\|z\|/\|s_\theta(x_i,t_i)\|\big)^2$，让漂移项和噪声项保持固定的比例。</p>
+<p>这个框架把前面的方法都统一了起来：</p>
+<ul>
+<li><strong>NCSN 的退火朗之万动力学</strong> = 只有校正器（预测器为恒等映射）；</li>
+<li><strong>DDPM 的祖先采样</strong> = 只有预测器（不做校正）；</li>
+<li>两者结合，在相同计算量下往往效果更好，尤其是对 VE-SDE。</li>
+</ul>
+<h3 id="73-ode-求解器">7.3 ODE 求解器</h3>
+<p>对概率流 ODE，可以使用任何 ODE 求解器：</p>
+<ul>
+<li><strong>欧拉法</strong>：即 DDIM；</li>
+<li><strong>通用的自适应求解器</strong>（如 RK45）：SDE 论文使用的方法，自动选择步长；</li>
+<li><strong>Heun 法</strong>（二阶）：EDM（Karras et al., 2022）把 ODE 写成 $\frac{dx}{d\sigma} = \frac{x - D(x;\sigma)}{\sigma}$（$D$ 为去噪器，$x = x_0+\sigma\epsilon$ 的 VE 形式），用 Heun 法配合精心设计的时间步，35 次网络前向就在 CIFAR-10 上达到了当时最好的 FID；</li>
+<li><strong>专用求解器</strong>：DPM-Solver、DPM-Solver++、UniPC 等利用扩散 ODE 的半线性结构，10 到 20 步即可。</li>
+</ul>
+<h2 id="8-一个延伸条件生成">8. 一个延伸：条件生成</h2>
+<p>SDE 框架还给出了条件生成的一般方法。要从 $p(x\mid y)$ 采样，只需把反向 SDE 中的 score 换成条件 score：</p>
+<p>$$
+dx = \big[f(x,t) - g^2(t)\,\nabla_x\log p_t(x\mid y)\big]dt + g(t)\,d\bar w
+$$</p>
+<p>由贝叶斯公式，$\nabla_x\log p_t(x\mid y) = \nabla_x\log p_t(x) + \nabla_x\log p_t(y\mid x)$。第一项就是无条件 score 网络，第二项可以用一个在加噪数据上训练的分类器（或已知的观测模型）得到。SDE 论文用这个方法做了类别条件生成、图像修补和上色，这就是下一篇要讲的 <strong>classifier guidance</strong> 的雏形。</p>
+<h2 id="9-小结">9. 小结</h2>
+<pre><code>               前向 SDE：dx = f dt + g dw
+                         │
+          ┌──────────────┴──────────────┐
+       VE-SDE                         VP-SDE
+   f = 0, g = √(dσ²/dt)        f = −½βx, g = √β
+       NCSN                           DDPM
+          └──── 只差一个随时间变化的缩放 ────┘
+                         │
+     反向 SDE：漂移项减去 g²·score，唯一需要学的是 score
+                         │       （DDPM 的 ε 与 score 只差系数）
+     Fokker–Planck：存在一族共享边际分布的 SDE
+                         │
+     σ = 0：概率流 ODE
+     确定、可逆、可算精确似然、可用高阶求解器
+     DDIM = 它的欧拉离散化；DPM-Solver、EDM = 更好的求解器
+</code></pre>
+<p>SDE 视角把前面几篇串成了一个整体：</p>
+<ul>
+<li><strong>加噪方式</strong>由 $f$ 和 $g$ 决定，NCSN 和 DDPM 只是两种选择；</li>
+<li><strong>训练</strong>只需要学 score，用的是连续时间的去噪分数匹配；</li>
+<li><strong>生成</strong>可以是随机的（反向 SDE），也可以是确定的（概率流 ODE），两者边际分布相同；</li>
+<li><strong>DDIM、DDPM、NCSN</strong> 分别对应 ODE 的欧拉法、反向 SDE 的离散化和朗之万校正。</li>
+</ul>
+<p>后来的很多工作都是在这个框架上继续简化和改进：EDM 系统地梳理了噪声调度、网络预处理、损失加权和采样器的设计空间；Flow Matching 和 Rectified Flow 则直接设计从噪声到数据的路径（比如直线 $x_t = (1-t)x_0 + t\epsilon$）和对应的速度场，跳过了 SDE，直接学习一个 ODE。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Anderson. <em>Reverse-Time Diffusion Equation Models.</em> Stochastic Processes and their Applications, 1982.</li>
+<li>Chen et al. <em>Neural Ordinary Differential Equations.</em> NeurIPS 2018.</li>
+<li>Grathwohl et al. <em>FFJORD: Free-form Continuous Dynamics for Scalable Reversible Generative Models.</em> ICLR 2019.</li>
+<li>Song et al. <em>Score-Based Generative Modeling through Stochastic Differential Equations.</em> ICLR 2021.</li>
+<li>Song, Durkan, Murray &amp; Ermon. <em>Maximum Likelihood Training of Score-Based Diffusion Models.</em> NeurIPS 2021.</li>
+<li>Lu et al. <em>DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps.</em> NeurIPS 2022.</li>
+<li>Karras et al. <em>Elucidating the Design Space of Diffusion-Based Generative Models.</em> NeurIPS 2022.</li>
+<li>Lipman et al. <em>Flow Matching for Generative Modeling.</em> ICLR 2023.</li>
+<li>Liu, Gong &amp; Liu. <em>Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow.</em> ICLR 2023.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>

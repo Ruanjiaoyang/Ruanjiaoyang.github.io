@@ -348,6 +348,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- BLOG:START -->
       <div class="entries">
         <article class="entry">
+          <h3><span lang="en">SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion</span><span lang="zh">SDE 与概率流 ODE：用连续时间统一扩散模型</span></h3>
+          <p class="entry-sum">Letting the number of diffusion steps go to infinity turns the forward process into a stochastic differential equation. This post derives the reverse-time SDE from Bayes&#x27; rule and a Taylor expansion, the continuous-time denoising score matching objective, and the VE and VP SDEs that recover NCSN and DDPM, and proves they are equivalent up to rescaling. It then derives the Fokker–Planck equation with the Dirac delta trick, uses it to build a family of SDEs that share the same marginals, and arrives at the probability flow ODE, showing why DDIM is its Euler discretization and covering samplers (reverse diffusion, predictor–corrector, ODE solvers) and exact likelihoods.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 28 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/sde-ode/" aria-label="SDEs and the Probability Flow ODE: A Continuous-Time View of Diffusion"></a>
+        </article>
+        <article class="entry">
           <h3><span lang="en">Score-Based Generative Models: Learn the Gradient, Not the Density</span><span lang="zh">Score-based 模型：不学密度，学密度的梯度</span></h3>
           <p class="entry-sum">The score of a distribution, the gradient of its log-density, does not depend on the normalizing constant. This post derives implicit, sliced and denoising score matching, explains Langevin dynamics and why its stationary distribution is the target, analyzes the three failure modes of the naive approach (manifold hypothesis, inaccurate low-density scores, wrong mode weights), and walks through NCSN: multi-scale noise, the noise-conditional objective and annealed Langevin sampling. It closes by showing that predicting the score is the same as predicting DDPM&#x27;s noise, plus inpainting.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
