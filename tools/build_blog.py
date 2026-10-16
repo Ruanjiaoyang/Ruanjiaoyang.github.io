@@ -26,6 +26,7 @@ START, END = "<!-- BLOG:START -->", "<!-- BLOG:END -->"
 SERIES = {
     "generative-models": ("From GANs to Diffusion", "从 GAN 到 Diffusion"),
     "diffusion-lm": ("Diffusion Language Models", "扩散语言模型"),
+    "transformer": ("Transformer Architecture", "Transformer 架构"),
 }
 
 
@@ -133,13 +134,15 @@ def blog_list(posts):
         items = sorted(groups[d], key=lambda p: p.get("order") or 0)
         fallback = str(items[0].get("series") or d)
         en, zh = (html.escape(x) for x in SERIES.get(d, (fallback, fallback)))
-        out.append(f'''      <div class="series">
-        <h3 class="series-name"><span lang="en">{en}</span><span lang="zh">{zh}</span></h3>
+        n = len(items)
+        out.append(f'''      <details class="series">
+        <summary><h3 class="series-name"><span lang="en">{en}</span><span lang="zh">{zh}</span></h3>
+          <span class="series-count"><span lang="en">{n} post{"s" if n != 1 else ""}</span><span lang="zh">{n} 篇</span></span></summary>
         <div class="entries">
-{chr(10).join(items and [entry(p) for p in items])}
+{chr(10).join(entry(p) for p in items)}
         </div>
-      </div>''')
-    return "\n".join(out).lstrip()
+      </details>''')
+    return '<div class="series-list">\n' + "\n".join(out) + "\n      </div>"
 
 
 def main():
