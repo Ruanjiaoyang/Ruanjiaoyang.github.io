@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
+          <span class="series-count"><span lang="en">6 posts</span><span lang="zh">6 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Transformer Architecture Foundations: Every Component of the Original Paper</span><span lang="zh">Transformer 架构基础：原始论文的每个部件</span></h4>
@@ -480,6 +480,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">The feed-forward network holds two thirds of a Transformer block&#x27;s parameters. This post first looks at what the FFN does (a per-token key-value memory) and how its activation evolved from ReLU and GELU to the gated SwiGLU used by modern models, including why the hidden size becomes 8/3 of the model width. It then turns the FFN into a mixture of experts: top-k routing, total versus activated parameters, capacity and token dropping, and the load-balancing problem with its solutions (the Switch auxiliary loss, router z-loss, and DeepSeek-V3&#x27;s auxiliary-loss-free bias). It covers DeepSeekMoE&#x27;s fine-grained and shared experts, the systems side of expert parallelism, and the newer LatentMoE idea. Routing and balancing are demonstrated with tested NumPy code.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/ffn-moe/" aria-label="FFN and MoE: From ReLU to SwiGLU, From Dense to Sparse Experts"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Residual Connections: From x + F(x) to Hyper-Connections and Attention Residuals</span><span lang="zh">残差连接：从 x + F(x) 到 Hyper-Connections 与 Attention Residuals</span></h4>
+          <p class="entry-sum">Residual connections were introduced as a gradient highway, but they also decide how information is aggregated across depth: every layer receives the unweighted sum of all earlier outputs. This post covers the classic view (identity path, the residual stream as a shared channel, the ensemble view), single-stream variants with scaling and gating (ReZero, LayerScale, Highway, DeepNorm), and the PreNorm dilution problem. It then presents a unified depth-mixing-matrix view and the two recent directions: multiple residual streams with learned mixing (Hyper-Connections and DeepSeek&#x27;s manifold-constrained mHC with doubly stochastic matrices), and Kimi&#x27;s Attention Residuals, which replace fixed accumulation with softmax attention over earlier layer outputs. NumPy experiments illustrate why mHC&#x27;s constraint keeps signals bounded and how AttnRes stops hidden-state growth.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 17 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/residual/" aria-label="Residual Connections: From x + F(x) to Hyper-Connections and Attention Residuals"></a>
         </article>
         </div>
       </details>
