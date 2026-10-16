@@ -57,30 +57,40 @@ def protect_math(md):
 
 
 def render(md):
+    """Return (body_html, toc_html)."""
     md, store = protect_math(md)
-    out = markdown.markdown(md, extensions=["extra", "sane_lists", "toc"],
-                            extension_configs={"toc": {"permalink": False, "slugify": slugify_unicode}})
-    return re.sub(r"\x00(\d+)\x00", lambda m: html.escape(store[int(m.group(1))], quote=False), out)
+    conv = markdown.Markdown(extensions=["extra", "sane_lists", "toc"],
+                             extension_configs={"toc": {"permalink": False, "slugify": slugify_unicode,
+                                                        "toc_depth": "2-3"}})
+    out = conv.convert(md)
+    restore = lambda t: re.sub(r"\x00(\d+)\x00", lambda m: html.escape(store[int(m.group(1))], quote=False), t)
+    return restore(out), restore(conv.toc)
 
 
-def toc(body_html):
-    items = re.findall(r'<h2 id="([^"]+)">(.*?)</h2>', body_html)
-    if not items:
-        return ""
-    lis = "\n".join(f'<li><a href="#{i}">{t}</a></li>' for i, t in items)
-    return f'<nav class="toc" aria-label="Contents"><p>目录</p><ol>{lis}</ol></nav>'
+def reading_minutes(md):
+    cjk = len(re.findall(r"[\u4e00-\u9fff]", md))
+    words = len(re.findall(r"[A-Za-z]+", md))
+    return max(1, round(cjk / 400 + words / 220))
 
 
-def page(p, body_html):
+def nice_date(d):
+    try:
+        return f"{d:%B} {d.day}, {d.year}"
+    except (TypeError, ValueError):
+        return str(d)
+
+
+def meta_line(p):
+    return (f'Date: {nice_date(p.get("date"))} | Estimated Reading Time: {p["minutes"]} min'
+            f' | Author: Jiaoyang Ruan')
+
+
+def page(p, body_html, toc_html):
     title = html.escape(str(p.get("title", p["slug"])))
-    title_en = html.escape(str(p.get("title_en", "")))
     desc = html.escape(" ".join(str(p.get("summary_en", "")).split()))
-    tags = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in p.get("tags", []))
-    series = html.escape(str(p.get("series", "")))
-    order = p.get("order")
-    kicker = f"{series} · 第 {order} 篇" if series and order is not None else series
-    fields = dict(title=title, title_en=title_en, desc=desc, tags=tags, kicker=kicker,
-                  date=str(p.get("date", "")), toc=toc(body_html), body=body_html)
+    toc_block = (f'<details class="toc"><summary>Table of Contents</summary>{toc_html}</details>'
+                 if "<li>" in toc_html else "")
+    fields = dict(title=title, desc=desc, meta=meta_line(p), toc=toc_block, body=body_html)
     out = TEMPLATE
     for k, v in fields.items():
         out = out.replace("{{" + k + "}}", v)
@@ -92,22 +102,25 @@ def blog_list(posts):
         return '<p class="empty"><span lang="en">Posts coming soon.</span><span lang="zh">文章即将上线。</span></p>'
     rows = []
     for p in posts:
-        series = html.escape(str(p.get("series", "")))
-        order = p.get("order")
-        rows.append(f'''        <li>
-          <p class="ptitle"><a href="{p["url"]}"><span lang="en">{html.escape(str(p.get("title_en") or p.get("title")))}</span><span lang="zh">{html.escape(str(p.get("title")))}</span></a></p>
-          <p class="bmeta">{p.get("date", "")} · {series}{f" · #{order}" if order is not None else ""}</p>
-          <p class="bsum" lang="en">{html.escape(" ".join(str(p.get("summary_en", "")).split()))}</p>
-        </li>''')
-    return '<ul class="blist">\n' + "\n".join(rows) + "\n      </ul>"
+        summary = html.escape(" ".join(str(p.get("summary_en", "")).split()))
+        rows.append(f'''        <article class="entry">
+          <h3><span lang="en">{html.escape(str(p.get("title_en") or p.get("title")))}</span><span lang="zh">{html.escape(str(p.get("title")))}</span></h3>
+          <p class="entry-sum">{summary}</p>
+          <p class="entry-meta">{meta_line(p)}</p>
+          <a class="entry-link" href="{p["url"]}" aria-label="{html.escape(str(p.get("title_en") or p.get("title")))}"></a>
+        </article>''')
+    return '<div class="entries">\n' + "\n".join(rows) + "\n      </div>"
 
 
 def main():
     posts = [read_post(f) for f in sorted(CONTENT.glob("*/*.md"))]
     for p in posts:
+        p["minutes"] = reading_minutes(p["body"])
+    for p in posts:
         dest = OUT / p["series_dir"] / p["slug"]
         dest.mkdir(parents=True, exist_ok=True)
-        (dest / "index.html").write_text(page(p, render(p["body"])), encoding="utf-8")
+        body_html, toc_html = render(p["body"])
+        (dest / "index.html").write_text(page(p, body_html, toc_html), encoding="utf-8")
         print("built", dest.relative_to(ROOT))
     posts.sort(key=lambda p: (str(p.get("date", "")), p.get("order") or 0), reverse=True)
     s = INDEX.read_text(encoding="utf-8")

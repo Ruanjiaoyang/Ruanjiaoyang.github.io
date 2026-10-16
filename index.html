@@ -186,11 +186,15 @@ p { margin: 0; }
 
 .pnote { color: var(--muted); font-size: 0.82rem; }
 
-/* blog list */
-.blist { list-style: none; margin: 0; padding: 0; display: grid; gap: 22px; }
-.blist li { display: grid; gap: 4px; }
-.bmeta { font-family: var(--f-mono); font-size: 0.78rem; color: var(--muted); }
-.bsum { color: var(--muted); font-size: 0.94rem; max-width: 64ch; }
+/* blog list: Lil'Log-style entry cards, whole card clickable */
+.entries { display: grid; gap: 20px; }
+.entry { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; display: grid; gap: 8px; transition: transform .1s; }
+.entry:active { transform: scale(0.98); }
+.entry:hover { border-color: var(--muted); }
+.entry h3 { margin: 0; font-size: 1.3rem; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.entry-sum { color: var(--muted); font-size: 0.9rem; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.entry-meta { color: var(--muted); font-size: 0.8rem; }
+.entry-link { position: absolute; inset: 0; border-radius: 8px; }
 .empty { color: var(--muted); }
 
 /* writing */
@@ -342,13 +346,14 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
     <section id="blog">
       <h2><span lang="en">Blog</span><span lang="zh">博客</span></h2>
       <!-- BLOG:START -->
-      <ul class="blist">
-        <li>
-          <p class="ptitle"><a href="blog/generative-models/gan/"><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></a></p>
-          <p class="bmeta">2026-10-16 · 从 GAN 到 Diffusion · #1</p>
-          <p class="bsum" lang="en">GANs learn to sample from a data distribution without ever writing down its density. This post covers the generator and discriminator, derives the minimax objective, the optimal discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks through architecture and training, and analyzes vanishing gradients, mode collapse and unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN, CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.</p>
-        </li>
-      </ul>
+      <div class="entries">
+        <article class="entry">
+          <h3><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></h3>
+          <p class="entry-sum">GANs learn to sample from a data distribution without ever writing down its density. This post covers the generator and discriminator, derives the minimax objective, the optimal discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks through architecture and training, and analyzes vanishing gradients, mode collapse and unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN, CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 23 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/gan/" aria-label="GAN: Learning a Distribution Through a Two-Player Game"></a>
+        </article>
+      </div>
       <!-- BLOG:END -->
     </section>
 
