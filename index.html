@@ -531,6 +531,30 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         </article>
         </div>
       </details>
+      <details class="series">
+        <summary><h3 class="series-name"><span lang="en">On-Policy Distillation</span><span lang="zh">On-Policy 蒸馏</span></h3>
+          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
+        <div class="entries">
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (1): Positioning and Theoretical Origins</span><span lang="zh">On-Policy Distillation（一）：定位与理论起源</span></h4>
+          <p class="entry-sum">The opening post of the OPD series. It defines on-policy distillation as &quot;student-generated trajectories plus dense teacher supervision&quot; and places it next to SFT and RL along two axes: who produces the trajectory and how dense the learning signal is. It then traces the theory OPD rests on: exposure bias and the compounding-error bound of behavior cloning versus DAgger, classic word-level and sequence-level knowledge distillation, forward versus reverse KL at the token and sequence level (including the chain-rule identity and why &quot;on-policy&quot; and &quot;reverse KL&quot; are two separate choices), and the fact that KL-regularized RL is itself reverse-KL distillation toward an implicit teacher. Tested NumPy code covers mode-covering versus mode-seeking, compounding errors, and the per-token versus sequence-level gradient of reverse KL.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 23 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/positioning-and-origins/" aria-label="On-Policy Distillation (1): Positioning and Theoretical Origins"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (2): The Foundational Methods – ImitKD, GKD, MiniLLM and DistiLLM</span><span lang="zh">On-Policy Distillation（二）：奠基方法 ImitKD、GKD、MiniLLM 与 DistiLLM</span></h4>
+          <p class="entry-sum">The second post of the OPD series covers the papers that turned &quot;train the student on its own samples with teacher feedback&quot; into concrete algorithms before the idea became an industrial recipe: ImitKD (the first DAgger-style autoregressive distillation), f-DISTILL, GKD (on-policy fraction and generalized JSD as two independent knobs, no gradient through sampling, and the GKD+RL objective), MiniLLM (sequence-level reverse KL optimized by policy gradient with single-step decomposition, teacher-mixed sampling and length normalization), DistiLLM and DistiLLM-2 (skew KL, an adaptive off-policy replay buffer, and a contrastive loss), and Speculative KD. Tested NumPy code checks the limits of the generalized JSD, the boundedness of skew KL, and the variance reduction of MiniLLM&#x27;s single-step decomposition. The post ends with a comparison table and what each paper actually established.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 18 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/foundational-methods/" aria-label="On-Policy Distillation (2): The Foundational Methods – ImitKD, GKD, MiniLLM and DistiLLM"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (3): Industrial Recipes – From Gemma 2 and Qwen3 to Multi-Teacher OPD</span><span lang="zh">On-Policy Distillation（三）：工业配方，从 Gemma 2、Qwen3 到多教师 OPD</span></h4>
+          <p class="entry-sum">The third post of the OPD series follows OPD from an academic method into production post-training pipelines, using only what the technical reports themselves state. Gemma 2 runs distillation on the student&#x27;s distribution; Qwen3 trains all of its small models with off-policy then on-policy distillation and reports that OPD beats RL from the same checkpoint at about one tenth of the GPU hours, including on pass@64; the Thinking Machines blog turns OPD into RL with the per-token reverse KL as the advantage and studies cost, LoRA, and recovering behaviors after mid-training. Multi-teacher OPD then becomes the integration layer of the post-training pipeline in MiMo-V2-Flash, GLM-5, DeepSeek-V4 and Nemotron 3 Ultra. A NumPy toy shows the trade-off in one picture: OPD reaches a goal tens of times faster than outcome-reward RL but stops at the teacher&#x27;s level, while RL keeps going.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 15 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/industrial-recipes/" aria-label="On-Policy Distillation (3): Industrial Recipes – From Gemma 2 and Qwen3 to Multi-Teacher OPD"></a>
+        </article>
+        </div>
+      </details>
       </div>
       <!-- BLOG:END -->
     </section>

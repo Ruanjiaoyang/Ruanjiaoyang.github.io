@@ -29,6 +29,7 @@ SERIES = {
     "diffusion-lm": ("Diffusion Language Models", "扩散语言模型"),
     "transformer": ("Transformer Architecture", "Transformer 架构"),
     "rl": ("Reinforcement Learning for LLMs", "LLM 强化学习"),
+    "opd": ("On-Policy Distillation", "On-Policy 蒸馏"),
 }
 
 
