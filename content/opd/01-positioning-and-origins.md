@@ -28,7 +28,7 @@ On-Policy Distillation（OPD，在线策略蒸馏）是 2025 到 2026 年后训�
 | 第 1 篇（本篇） | 定位与理论起源：OPD 和 SFT、RL 的关系；exposure bias 与 DAgger；forward / reverse KL；RL 与蒸馏的统一 |
 | 第 2 篇 | 奠基方法：ImitKD、GKD、MiniLLM、DistiLLM 等，散度方向和梯度估计上的分歧 |
 | 第 3 篇 | 工业配方：Gemma 2、Qwen3 的两段式蒸馏、Thinking Machines 的做法、多教师 OPD |
-| 第 4 篇起 | 2026 年的工作，按它们共同解决的问题分组：为什么有效与何时失效、超越 teacher、长序列与 teacher 选择、黑盒 teacher、降本、OPSD 自蒸馏分支 |
+| 第 4 篇起 | 2026 年的工作，按它们共同解决的问题分组：为什么有效与何时失效、超越 teacher、教哪些 token 与用什么目标、黑盒 teacher、降本与长序列、OPSD 自蒸馏分支 |
 
 本篇只讲基础，目标是把后面所有论文都要用到的概念一次讲清楚：
 

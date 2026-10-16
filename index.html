@@ -533,7 +533,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">On-Policy Distillation</span><span lang="zh">On-Policy 蒸馏</span></h3>
-          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
+          <span class="series-count"><span lang="en">9 posts</span><span lang="zh">9 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">On-Policy Distillation (1): Positioning and Theoretical Origins</span><span lang="zh">On-Policy Distillation（一）：定位与理论起源</span></h4>
@@ -564,6 +564,30 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">The fifth post of the OPD series asks how a student can end up better than its teacher, given that plain OPD converges to the teacher. G-OPD rewrites OPD as KL-regularized RL with an implicit dense reward and adds two knobs, a reward scale and a reference model; scaling the reward beyond one (ExOPD) extrapolates past the teacher, and using the teacher&#x27;s pre-RL model as the reference (reward correction) isolates what RL taught the teacher. Direct-OPD takes that RL-induced shift and applies it to a stronger student, turning a weak teacher into a weak-to-strong signal. The Extrapolation Cliff and REOPD mark the limits of extrapolation, and KDRL, MiMo&#x27;s MOPD and MAD-OPD show the other route of adding outcome rewards or richer teachers. A NumPy toy reproduces the closed-form G-OPD optimum and the Direct-OPD effect.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 12 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/opd/beyond-the-teacher/" aria-label="On-Policy Distillation (5): Going Beyond the Teacher, and Combining OPD with RL"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (6): Which Tokens to Teach, and With What Objective</span><span lang="zh">On-Policy Distillation（六）：教哪些 token，用什么目标</span></h4>
+          <p class="entry-sum">The sixth post of the OPD series covers the 2026 papers that change the OPD loss itself. It starts from a 2x2 map (prefix source by KL direction) and then groups the work by what it modifies: the estimator (vOPD subtracts the per-token reverse KL as a closed-form, critic-free baseline), the target (TOP-D mixes teacher and student in probability space to bound the reward, Veto builds a logit-space intermediate target, EOPD adds forward KL on high-entropy teacher positions to keep diversity), and which tokens or trajectories count (TA-OPD keeps only tokens that are both informative and reachable, FiRe-OPD filters then reweights, while SCOPE and Uni-OPD use a verifier and are really OPD-plus-outcome-reward hybrids). NumPy code checks the vOPD variance reduction and the TOP-D reward bound. Each paper is labelled with how strictly on-policy it is and how strong its evidence is.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 12 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/token-and-objective-design/" aria-label="On-Policy Distillation (6): Which Tokens to Teach, and With What Objective"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (7): Black-Box Teachers and Mismatched Tokenizers</span><span lang="zh">On-Policy Distillation（七）：拿不到 logits 或词表不同时怎么办</span></h4>
+          <p class="entry-sum">The seventh post of the OPD series covers the two access problems that standard OPD assumes away: the teacher may only be reachable through an API that returns text, and the teacher and student may use different tokenizers. For black-box teachers, GAD trains a discriminator alongside the student and uses it as an on-policy reward, OVD asks the teacher for verbal scores, and ROPD has the teacher write contrastive rubrics that a verifier checks; all three turn OPD back into sequence-level RL with a teacher-derived reward. For mismatched vocabularies, SimCT and BPM project the teacher&#x27;s next-token distribution onto units both models share, and a recent counterpoint argues that coverage matters less than supervision reliability. A NumPy-free toy shows byte-prefix marginalization on one position.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 9 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/black-box-teachers/" aria-label="On-Policy Distillation (7): Black-Box Teachers and Mismatched Tokenizers"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (8): Cutting Cost, Long Rollouts and Multi-Turn Agents</span><span lang="zh">On-Policy Distillation（八）：降本，以及长序列和多轮 agent</span></h4>
+          <p class="entry-sum">The eighth post of the OPD series is about cost. An OPD step pays for student rollouts, a teacher forward pass over every rollout token, and the student update; for long chains of thought and multi-turn agents the first two dominate. The 2026 work falls into four groups: generate fewer tokens (prefix OPD, Prune-OPD, STRIDE), reuse rollouts and teacher scores (Lightning OPD, asynchronous f-OPD, ReOPD prefix replay), take fewer optimizer steps (EffOPD), and engineer the teacher side (DeepSeek-V4&#x27;s full-vocabulary multi-teacher setup). For each method the post separates matched-accuracy speedups from headline numbers and marks which ones stop being strictly on-policy. A toy script reproduces the Prune-OPD weighting on a synthetic rollout.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 14 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/cost-and-long-horizon/" aria-label="On-Policy Distillation (8): Cutting Cost, Long Rollouts and Multi-Turn Agents"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (9): On-Policy Self-Distillation and the Privileged Teacher</span><span lang="zh">On-Policy Distillation（九）：OPSD，让带着答案的自己当 teacher</span></h4>
+          <p class="entry-sum">The last post of the OPD series covers on-policy self-distillation (OPSD): the teacher is the same model given privileged context, such as a reference solution, environment feedback, a demonstration or a cleaner sub-context. It traces the branch from context distillation (Askell 2021, Snell 2022) through OPCD, then reads the 2026 core papers closely: OPSD (whose v1-to-v3 revision changed the recipe and the headline numbers), SDPO, SDFT (with its forward-KL erratum) and pi-Distill. The second half collects the evidence that the privileged teacher leaks style as well as knowledge: style tokens dominating the KL, suppressed uncertainty, collapsing diversity, and OP2SD&#x27;s finding that another problem&#x27;s solution works as well as the right one. It ends with criteria for when the information asymmetry is reasonable. A toy script reproduces the &quot;rich get richer&quot; tilt that self-distillation applies to two equally correct answers.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/opsd-self-distillation/" aria-label="On-Policy Distillation (9): On-Policy Self-Distillation and the Privileged Teacher"></a>
         </article>
         </div>
       </details>
