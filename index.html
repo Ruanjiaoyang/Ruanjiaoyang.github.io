@@ -348,6 +348,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- BLOG:START -->
       <div class="entries">
         <article class="entry">
+          <h3><span lang="en">DDPM: Add Noise Step by Step, Then Learn to Remove It</span><span lang="zh">DDPM：一步步加噪，再一步步去噪</span></h3>
+          <p class="entry-sum">DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the closed-form marginal q(x_t|x_0), the tractable posterior q(x_{t-1}|x_t,x_0) by completing the square, the full variational bound and its decomposition into L_T, L_{t-1} and L_0, and how the Gaussian KL terms collapse to the simple noise-prediction loss. It then covers the training and sampling algorithms, the choice of reverse variance, noise schedules, network architecture, and the epsilon, x_0 and v parameterizations.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 26 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/ddpm/" aria-label="DDPM: Add Noise Step by Step, Then Learn to Remove It"></a>
+        </article>
+        <article class="entry">
           <h3><span lang="en">From AE to VAE to VQ-VAE: Making the Latent Space Samplable</span><span lang="zh">从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样</span></h3>
           <p class="entry-sum">An autoencoder compresses data but cannot generate, because nothing constrains its latent space. VAEs fix this with a probabilistic encoder and a KL regularizer. This post derives the evidence lower bound in two ways, the closed-form Gaussian KL and the reparameterization trick, explains blurriness and posterior collapse, and then covers VQ-VAE in detail: codebook, the three loss terms, the straight-through estimator, EMA updates, the learned prior, codebook collapse, VQ-VAE-2 and VQGAN, which together became the tokenizer behind latent diffusion and autoregressive image models.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
