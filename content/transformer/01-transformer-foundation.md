@@ -1,13 +1,13 @@
 ---
-title: "原始 Transformer：每个部件的基础版本"
-title_en: "The Original Transformer: The Baseline Version of Every Component"
+title: "Transformer 架构基础：原始论文的每个部件"
+title_en: "Transformer Architecture Foundations: Every Component of the Original Paper"
 series: "Transformer 架构"
-order: 0
+order: 1
 date: 2026-10-16
 tags: [Transformer, LLM, Attention Is All You Need]
 summary_en: >
   The opening post of the series: the 2017 encoder-decoder Transformer, taken apart component by
-  component in the order data flows through it. For each part (tokenizer, embedding and output layer,
+  component in the order data flows through it. For each part (BPE tokenizer with a worked example, embedding and output layer with weight tying,
   sinusoidal positional encoding, scaled dot-product and multi-head attention, masks, feed-forward
   network, residual connections, Post-LN layer normalization, dropout) it gives the original formula, why
   it was designed that way, its known limitations, and which later post covers the variants that replaced
@@ -51,19 +51,115 @@ summary_en: >
 
 ### 2.1 分词器
 
-**做什么.** 把文本切成 token，映射成整数 id。
+**做什么.** 把文本切成 token，映射成整数 id。分词器不是神经网络的一部分，不参与梯度训练，但它决定了模型"看到"的基本单位，也决定了词表大小 $V$，进而决定嵌入层和输出层的形状。
 
-**原始做法.** 英德翻译使用 **BPE**（Byte Pair Encoding），源语言和目标语言**共享**一个约 37000 个 token 的词表；英法翻译使用 32000 个 token 的 word-piece 词表。BPE 从字符出发，反复把出现次数最多的相邻符号对合并成新符号，直到达到目标词表大小。
+**原始做法.** 英德翻译使用 **BPE**（Byte Pair Encoding，Sennrich et al., 2016），源语言和目标语言**共享**一个约 37000 个 token 的词表；英法翻译使用 32000 个 token 的 word-piece 词表。
 
-**为什么.** 按词切分有词表外（OOV）问题，按字符切分序列太长；子词切分让常见词完整、罕见词拆成可复用的片段。源语言和目标语言共享词表，才能共享嵌入矩阵（见 2.2）。
+**为什么用子词.** 切分粒度有三种选择：
 
-**局限与变体.** 以字符为初始词表仍可能遇到没见过的字符；后来 GPT-2 改为以字节为初始词表的**字节级 BPE**，并加入预分词规则。词表也从几万扩大到十几二十万。→ 第 1 篇。
+| 粒度 | 例子 | 优点 | 缺点 |
+|---|---|---|---|
+| 按词 | `tokenization` → `[tokenization]` | 序列短，每个 token 语义完整 | 词表巨大，没见过的词只能映射成 `<unk>`（OOV 问题）；`run`、`runs`、`running` 互不相关 |
+| 按字符 | `tokenization` → `[t, o, k, …]` | 词表极小，没有 OOV | 序列长好几倍，注意力成本按平方增长；单个字符几乎没有语义 |
+| 子词 | `tokenization` → `[token, ization]` | 常见词完整、罕见词拆成可复用片段，没有 OOV | 切分边界不一定符合语言学 |
+
+子词是两者的折中：高频词是一个 token，序列不会太长；罕见词被拆成见过的片段；词缀（`ization`、`ing`、`un`）成为独立 token，形态规律可以在不同词之间共享。源语言和目标语言共享词表，才能共享嵌入矩阵（见 2.2）。
+
+**BPE 的训练算法.**
+
+1. 把语料切成词，统计每个词的频次；每个词拆成字符序列，词尾加结束标记 `</w>`（用来区分词中的 `st` 和词尾的 `st`）；
+2. 初始词表 = 所有出现过的字符；
+3. 统计所有**相邻符号对**在语料中出现的总次数，把次数最多的一对合并成一个新符号，加入词表，并记录这条**合并规则**；
+4. 在语料中把这一对全部替换成新符号；
+5. 重复第 3、4 步，直到词表达到目标大小。
+
+产出两样东西：**词表**和**有序的合并规则列表**。
+
+**手算一个例子.** 语料中有四个词：
+
+| 词 | 频次 | 初始切分 |
+|---|---|---|
+| low | 5 | `l o w </w>` |
+| lower | 2 | `l o w e r </w>` |
+| newest | 6 | `n e w e s t </w>` |
+| widest | 3 | `w i d e s t </w>` |
+
+相邻对的次数是它所在词的频次之和：`e s`、`s t`、`t </w>` 都是 6 + 3 = 9 次，`w e` 是 2 + 6 = 8 次，`l o`、`o w` 是 5 + 2 = 7 次。依次合并：
+
+| 第几次 | 合并 | 次数 | 合并后 |
+|---|---|---|---|
+| 1 | `e s → es` | 9 | newest = `n e w es t </w>` |
+| 2 | `es t → est` | 9 | newest = `n e w est </w>` |
+| 3 | `est </w> → est</w>` | 9 | newest = `n e w est</w>` |
+| 4 | `l o → lo` | 7 | lower = `lo w e r </w>` |
+| 5 | `lo w → low` | 7 | lower = `low e r </w>` |
+
+（第 1 次有三对并列 9 次，实现中按确定规则打破平局，这里取先出现的。）算法自动发现了最高级后缀 `est` 和词根 `low`。
+
+**编码.** 对一个新词，拆成字符后**按训练时学到的顺序**应用合并规则。没见过的 `lowest`：`l o w e s t </w>` → `l o w es t </w>` → `l o w est </w>` → `l o w est</w>` → `lo w est</w>` → `low est</w>`，得到 `["low", "est</w>"]`。虽然它不在训练语料里，仍被拆成了两个有意义的片段。
+
+```python
+from collections import Counter
+
+def get_pair_counts(vocab):
+    pairs = Counter()
+    for word, freq in vocab.items():
+        for a, b in zip(word, word[1:]):
+            pairs[(a, b)] += freq
+    return pairs
+
+def merge_pair(pair, vocab):
+    a, b = pair
+    new_vocab = {}
+    for word, freq in vocab.items():
+        out, i = [], 0
+        while i < len(word):
+            if i < len(word) - 1 and word[i] == a and word[i + 1] == b:
+                out.append(a + b)
+                i += 2
+            else:
+                out.append(word[i])
+                i += 1
+        new_vocab[tuple(out)] = freq
+    return new_vocab
+
+def train_bpe(word_freqs, num_merges):
+    vocab = {tuple(w) + ('</w>',): f for w, f in word_freqs.items()}
+    merges = []
+    for _ in range(num_merges):
+        pairs = get_pair_counts(vocab)
+        if not pairs:
+            break
+        best, count = pairs.most_common(1)[0]
+        if count < 2:
+            break
+        vocab = merge_pair(best, vocab)
+        merges.append(best)
+    return merges
+
+def encode_word(word, merges):
+    symbols = list(word) + ['</w>']
+    for pair in merges:                 # 按学到的顺序应用
+        symbols = list(merge_pair(pair, {tuple(symbols): 1}).keys())[0]
+    return list(symbols)
+
+merges = train_bpe({'low': 5, 'lower': 2, 'newest': 6, 'widest': 3}, num_merges=10)
+print(merges[:5])                     # [('e','s'), ('es','t'), ('est','</w>'), ('l','o'), ('lo','w')]
+print(encode_word('lowest', merges))  # ['low', 'est</w>']
+```
+
+**局限与后来的做法.** 分词器不属于网络结构，本系列不再单独展开，这里把与架构相关的几点交代清楚：
+
+- **字节级 BPE**：以字符为初始词表，遇到没见过的字符（罕见文字、emoji）仍会 OOV。GPT-2 改为先把文本按 UTF-8 编码成字节，以 256 个字节为初始词表做 BPE，任何字符串都能编码。GPT-2 的词表大小 50257 = 256 个字节 + 50000 次合并 + 1 个 `<|endoftext|>`。代价是一个汉字占 3 个字节，中文语料不足时一个汉字可能要 2 到 3 个 token；
+- **预分词**：BPE 之前先用正则把文本切成单词、数字、标点、空白等块，合并只在块内进行，避免学出 `dog.`、`dog!` 这类跨边界的 token。GPT-2 的空格并入后面的词，所以 ` Hello` 和 `Hello` 是不同的 token；
+- **词表大小**：$V$ 越大，同样的文本 token 越少，注意力越省；但嵌入层和输出层各有 $V\times d$ 个参数，输出层每个 token 要算 $V$ 个分数（见 2.2）。早期模型多用 3 万到 5 万，现在常见 10 万到 25 万。模型越大，嵌入层的参数占比越小，大词表越划算；
+- **可见后果**：模型看到的是 token id 而不是字母，所以"strawberry 里有几个 r"这类拼写任务容易出错；数字怎么切分也会影响算术能力，很多分词器因此把数字逐位或最多三位一组切分。
 
 输出形状：$[B, L]$ 的整数张量。
 
 ### 2.2 Token Embedding 与输出层
 
-**做什么.** 嵌入层把 token id 变成向量；输出层把最后的隐藏向量变回词表上的分数（logits）。
+**做什么.** 嵌入层把 token id 变成向量，是模型的入口；输出层把最后的隐藏向量变回词表上的分数（logits），是模型的出口。
 
 **原始做法.** 嵌入矩阵 $E\in\mathbb R^{V\times d}$，查表得到向量后**乘以 $\sqrt{d}$**：
 
@@ -79,12 +175,46 @@ $$
 
 原论文让**编码器嵌入、解码器嵌入和输出层三者共享同一个矩阵 $E$**（weight tying）。
 
-**为什么.**
+**查表就是乘以 one-hot.** 把 token $i$ 写成 one-hot 行向量 $e_i\in\{0,1\}^{1\times V}$，则 $e_iE = E[i]$。所以嵌入层在数学上是一个没有偏置、输入为 one-hot 的线性层。实现时直接按索引取行，几乎不消耗计算，成本在存储和访存上。由此可以推出它的梯度是**稀疏**的：
 
-- **共享权重**：输入嵌入和输出层都在建立"token 与 $d$ 维向量"之间的对应关系，共享让两者处于同一语义空间，并且省下 $2Vd$ 个参数（Base 模型中约 3800 万，比一半参数还多）；
-- **乘以 $\sqrt{d}$**：嵌入的初始化方差约为 $1/d$，每个分量很小；而接下来要加的正弦位置编码每个分量在 $[-1,1]$。乘以 $\sqrt{d}$ 让嵌入的分量回到 $O(1)$ 的量级，位置信息不至于盖过内容信息。
+$$
+\frac{\partial\mathcal L}{\partial E} = \sum_t e_{i_t}^\top\frac{\partial\mathcal L}{\partial x_t}
+$$
 
-**局限与变体.** 现代大模型中，小模型多数仍共享权重，大模型多数不共享（参数占比小，解除共享能提供更多自由度）；大词表使嵌入层和输出层成为显著的计算成本。→ 第 2 篇。
+只有这个批次中出现过的 token 对应的行收到梯度，罕见 token 很少被更新。
+
+为什么不直接把 one-hot 送进网络？一是维度 $V$ 太大，后续每层的权重都要乘这个维度；二是任意两个 one-hot 向量正交、距离相同，无法表示语义相似。稠密嵌入把相似的 token 放在相近的位置，在一个 token 上学到的东西可以泛化到相似的 token 上。
+
+**输出层与交叉熵的梯度.** $z_{t,i} = w_i^\top h_t$，即隐藏向量与 token $i$ 的输出向量 $w_i$ 的内积：对齐得越好，该 token 概率越高。训练目标是正确 token $y$ 的负对数概率 $\mathcal L = -z_y + \log\sum_j\exp(z_j)$，对 logits 求导得
+
+$$
+\frac{\partial\mathcal L}{\partial z_i} = p_i - \mathbb 1[i = y],\qquad \nabla_z\mathcal L = p - e_y
+$$
+
+即**预测分布减去 one-hot 目标**：正确 token 的 logit 被往上推，其他 token 的 logit 按各自的预测概率被往下压。输出层每一行在每一步都收到梯度，是**稠密**的，这与嵌入层正好相反。
+
+**为什么共享权重.**
+
+- **省参数**：少一个 $V\times d$ 的矩阵。Base 模型三处共享，省下 $2Vd$ 个参数，约 3800 万，比全部参数的一半还多；
+- **语义空间一致**：共享后 $z_{t,i} = E[i]^\top h_t$，下一个 token 的分数就是隐藏向量与它的输入嵌入的内积。"语义相近的 token 输入向量相近"直接变成"语义相近的 token 输出得分相近"；
+- **罕见 token 学得更好**：嵌入的梯度稀疏、输出层的梯度稠密，共享之后每个 token 的向量在每一步都能通过输出端得到训练信号（Press & Wolf, 2017）。
+
+**为什么乘以 $\sqrt d$.** 常见初始化让嵌入元素的方差约为 $1/d$，每个分量约为 $1/\sqrt d$ 的量级；而接下来要加的正弦位置编码每个分量在 $[-1,1]$。直接相加，位置信息会盖过内容信息。乘以 $\sqrt d$ 让嵌入分量回到 $O(1)$ 的量级，与位置编码相当。
+
+**局限与后来的做法.**
+
+- **共享的代价**：输入嵌入要表达"这个 token 是什么"，输出向量要表达"什么上下文之后会出现它"，两者相关但不相同，共享限制了自由度。经验上**小模型多数共享，大模型多数不共享**：小模型中嵌入参数占比高，共享很划算；大模型中占比小，解除共享换来的自由度更有价值。例如 GPT-2、Qwen2 的 0.5B 和 1.5B 共享，Llama 2、Llama 3 不共享；但 Gemma 系列各尺寸都共享，所以这不是绝对规律；
+- **$\sqrt d$ 缩放**：现代模型大多用 RoPE，位置信息不再加在嵌入上，这个缩放的原始动机消失了，Llama 等不再乘 $\sqrt d$。Gemma 保留了它，是为了配合自己的初始化和归一化方案；
+- **大词表的成本**：嵌入层和输出层各有 $Vd$ 个参数（按公开配置估算）：
+
+| 模型 | $V$ | $d$ | 是否共享 | 嵌入 + 输出层参数 | 占总参数 |
+|---|---|---|---|---|---|
+| GPT-2 small | 50257 | 768 | 共享 | 约 39M | 约 31% |
+| Qwen2-0.5B | 151936 | 896 | 共享 | 约 136M | 约 28% |
+| Llama 2 7B | 32000 | 4096 | 不共享 | 约 262M | 约 4% |
+| Llama 3 8B | 128256 | 4096 | 不共享 | 约 1.05B | 约 13% |
+
+  输出层每个 token 要做约 $2Vd$ 次浮点运算，Llama 3 8B 中约占每 token 前向计算的 6.6%。MoE 模型中这一点更明显：专家是稀疏激活的，输出层却是稠密的，每个 token 都要算完整个词表。
 
 输出形状：$[B, L, d]$。
 
@@ -120,7 +250,7 @@ $$
 - **多频率**：高频维度区分相邻位置，低频维度区分远距离位置，类似二进制计数中低位翻转快、高位翻转慢；
 - **无参数**：论文也试过可学习的位置嵌入，效果几乎相同，选择正弦是希望能外推到比训练更长的序列。
 
-**局限与变体.** 实践中正弦编码的长度外推并不好；位置信息加在嵌入上，经过注意力投影后与内容混在一起，相对位置只能被间接利用；靠后的维度频率很低，在常见长度内几乎不变。后来出现了可学习位置编码（BERT、GPT-2）、相对位置偏置（T5）、RoPE、各种长度扩展方法，以及部分维度或部分层不加位置编码的做法。→ 第 3 到 7 篇。
+**局限与变体.** 实践中正弦编码的长度外推并不好；位置信息加在嵌入上，经过注意力投影后与内容混在一起，相对位置只能被间接利用；靠后的维度频率很低，在常见长度内几乎不变。后来出现了可学习位置编码（BERT、GPT-2）、相对位置偏置（T5）、RoPE、各种长度扩展方法，以及部分维度或部分层不加位置编码的做法。→ 第 2 篇。
 
 ### 2.4 缩放点积注意力
 
@@ -171,7 +301,7 @@ $$
 
 （逐行 softmax 与对行列做同一置换可交换，$P^\top P = I$。）输出只是跟着重排，数值不变。所以注意力本身看不到顺序，这就是 2.3 节需要位置编码的原因。
 
-**局限与变体.** 平方复杂度限制了上下文长度。→ 第 8 篇（注意力本身）、第 12 到 20 篇（稀疏、线性、混合、IO 优化）。
+**局限与变体.** 平方复杂度限制了上下文长度。→ 第 3 篇（稀疏注意力、线性注意力、混合架构、FlashAttention）。
 
 ### 2.5 多头注意力
 
@@ -197,7 +327,7 @@ $$
 
 **多头不增加参数.** $h$ 个 $d\times d_k$ 的投影拼起来正好是一个 $d\times d$ 矩阵，所以多头注意力的四个投影共 $4d^2$ 个参数，与单头相同。实现时就是一个大投影，再把结果 reshape 成 $h$ 个头。
 
-**局限与变体.** 推理时每个头都要缓存自己的 K、V，KV Cache 很大。→ 第 9 篇（KV Cache）、第 10 篇（MQA、GQA 让多个查询头共享 K、V）、第 11 篇（MLA 把 K、V 压缩成低维隐变量）。
+**局限与变体.** 推理时每个头都要缓存自己的 K、V，KV Cache 很大。→ 第 3 篇（KV Cache；MQA、GQA 让多个查询头共享 K、V；MLA 把 K、V 压缩成低维隐变量）。
 
 ### 2.6 掩码
 
@@ -245,7 +375,7 @@ $$
 
 **为什么.** 注意力的输出是值向量的加权平均，对值向量而言是线性的（非线性只在 softmax 权重里）。注意力负责"从别的 token 取信息"，FFN 负责"对取到的信息做加工"。先升维到 $4d$ 再降回，给了足够的容量。FFN 占每层参数的三分之二，也被认为是存储事实性知识的主要位置。
 
-**局限与变体.** ReLU 后来被 GELU、SwiGLU 等门控激活取代；把一个 FFN 换成多个、每个 token 只激活其中几个，就得到 MoE。→ 第 24 到 27 篇。
+**局限与变体.** ReLU 后来被 GELU、SwiGLU 等门控激活取代；把一个 FFN 换成多个、每个 token 只激活其中几个，就得到 MoE。→ 第 5 篇。
 
 ### 2.9 残差连接
 
@@ -261,7 +391,7 @@ $$
 
 即使 $F$ 的梯度很小，恒等项 $I$ 也能让梯度直接传到更浅的层。这是 ResNet（He et al., 2016）的核心思想，使几十上百层的网络可以训练。
 
-**局限与变体.** 所有层的输出不断累加在同一条"残差流"上，层数很多时每一层新增的贡献相对越来越小。新模型开始尝试多条残差流、沿深度方向的注意力等可学习的跨层连接。→ 第 28 到 30 篇。
+**局限与变体.** 所有层的输出不断累加在同一条"残差流"上，层数很多时每一层新增的贡献相对越来越小。新模型开始尝试多条残差流、沿深度方向的注意力等可学习的跨层连接。→ 第 6 篇。
 
 ### 2.10 层归一化：Post-LN
 
@@ -284,7 +414,7 @@ $$
 
 **为什么用 LayerNorm 而不是 BatchNorm.** BatchNorm 对同一特征在整个批内求统计量，在 NLP 中会受到变长序列和 padding 的干扰，依赖较大的批，且训练和推理的统计量不一致。LayerNorm 只看单个 token 自己的特征，与批大小和序列长度无关。
 
-**局限与变体.** Post-LN 下梯度从深层回传时要连续经过每一层的 LayerNorm，深层模型训练不稳定，非常依赖学习率预热（见第 3 节）。现代模型几乎都改为 **Pre-LN**（$x\leftarrow x + \mathrm{Sublayer}(\mathrm{Norm}(x))$），并把 LayerNorm 换成去掉均值的 **RMSNorm**，有的还对 Q、K 单独做归一化（QK-Norm）。→ 第 21 到 23 篇。
+**局限与变体.** Post-LN 下梯度从深层回传时要连续经过每一层的 LayerNorm，深层模型训练不稳定，非常依赖学习率预热（见第 3 节）。现代模型几乎都改为 **Pre-LN**（$x\leftarrow x + \mathrm{Sublayer}(\mathrm{Norm}(x))$），并把 LayerNorm 换成去掉均值的 **RMSNorm**，有的还对 Q、K 单独做归一化（QK-Norm）。→ 第 4 篇。
 
 ### 2.11 Dropout
 
@@ -336,7 +466,7 @@ $$
 \text{lr} = d^{-0.5}\cdot\min\big(\text{step}^{-0.5},\ \text{step}\cdot\text{warmup}^{-1.5}\big),\qquad \text{warmup} = 4000
 $$
 
-两段在 step = warmup 时相等，峰值约为 $512^{-0.5}\times 4000^{-0.5}\approx 7\times 10^{-4}$。预热对 Post-LN 至关重要：训练初期 Post-LN 靠近输出的层梯度很大，直接用大学习率容易发散（第 22 篇会推导）。
+两段在 step = warmup 时相等，峰值约为 $512^{-0.5}\times 4000^{-0.5}\approx 7\times 10^{-4}$。预热对 Post-LN 至关重要：训练初期 Post-LN 靠近输出的层梯度很大，直接用大学习率容易发散（第 4 篇会推导）。
 
 **标签平滑.** $\epsilon_{ls} = 0.1$：目标分布从 one-hot 改成正确 token 占 0.9、其余 token 平分 0.1。这会让模型"不那么确定"，困惑度变差，但 BLEU 提高。
 
@@ -353,7 +483,7 @@ $$
 
 原论文用**束搜索**（beam search）选择输出：每一步保留得分最高的 4 条候选序列，并用长度惩罚 $\alpha = 0.6$ 避免偏向短句。
 
-训练时并行、推理时串行，这种不对称是自回归 Transformer 的基本特征。朴素实现每一步都要把整个前缀重新算一遍；缓存历史 token 的 K、V 可以避免重复计算（第 9 篇）。大语言模型中，束搜索大多被温度采样、Top-p 采样等随机解码方法取代（第 31 篇）。
+训练时并行、推理时串行，这种不对称是自回归 Transformer 的基本特征。朴素实现每一步都要把整个前缀重新算一遍；缓存历史 token 的 K、V 可以避免重复计算（第 3 篇）。大语言模型中，束搜索大多被温度采样、Top-p 采样等随机解码方法取代（第 7 篇）。
 
 ## 5. 完整实现
 
@@ -521,7 +651,7 @@ def greedy_decode(model, src, bos_id, eos_id, max_len=100):
     return ys
 ```
 
-注意 `greedy_decode` 每一步都把整个前缀重新送进解码器，这正是第 9 篇 KV Cache 要优化的地方。
+注意 `greedy_decode` 每一步都把整个前缀重新送进解码器，这正是第 3 篇中 KV Cache 要优化的地方。
 
 ## 6. 参数量与计算量
 
@@ -597,16 +727,16 @@ $$
 
 | 部件 | 原始 Transformer（2017） | 现代 LLM 常见做法 | 本系列 |
 |---|---|---|---|
-| 分词 | BPE，约 37K 共享词表 | 字节级 BPE，10 万到 25 万词表 | 第 1 篇 |
-| 嵌入与输出 | 三处共享权重，乘 $\sqrt d$ | 小模型共享、大模型多不共享 | 第 2 篇 |
-| 位置编码 | 正弦，加在嵌入上 | RoPE 作用在 Q、K 上；长度扩展；部分维度或部分层不用 | 第 3–7 篇 |
-| 注意力 | 多头注意力（MHA） | GQA 或 MLA；长上下文用稀疏、线性或混合注意力 | 第 8–20 篇 |
-| 归一化 | Post-LayerNorm | Pre-RMSNorm，加 QK-Norm | 第 21–23 篇 |
-| FFN | ReLU，$d_{\text{ff}} = 4d$ | SwiGLU，或 MoE | 第 24–27 篇 |
-| 残差 | $\mathrm{Norm}(x + F(x))$ | $x + F(\mathrm{Norm}(x))$；新模型尝试可学习的跨层连接 | 第 28–30 篇 |
+| 分词 | BPE，约 37K 共享词表 | 字节级 BPE，10 万到 25 万词表 | 本篇 2.1 |
+| 嵌入与输出 | 三处共享权重，乘 $\sqrt d$ | 小模型共享、大模型多不共享 | 本篇 2.2 |
+| 位置编码 | 正弦，加在嵌入上 | RoPE 作用在 Q、K 上；长度扩展；部分维度或部分层不用 | 第 2 篇 |
+| 注意力 | 多头注意力（MHA） | GQA 或 MLA；长上下文用稀疏、线性或混合注意力 | 第 3 篇 |
+| 归一化 | Post-LayerNorm | Pre-RMSNorm，加 QK-Norm | 第 4 篇 |
+| FFN | ReLU，$d_{\text{ff}} = 4d$ | SwiGLU，或 MoE | 第 5 篇 |
+| 残差 | $\mathrm{Norm}(x + F(x))$ | $x + F(\mathrm{Norm}(x))$；新模型尝试可学习的跨层连接 | 第 6 篇 |
 | Dropout | 0.1 | 预训练通常不用 | — |
 | 线性层偏置 | 有 | 大多去掉 | — |
-| 解码 | 束搜索 | 温度 + Top-p 采样 | 第 31 篇 |
+| 解码 | 束搜索 | 温度 + Top-p 采样 | 第 7 篇 |
 
 一个现代 decoder-only block 写成公式是
 
@@ -621,17 +751,19 @@ Attn 内部对 Q、K 施加 RoPE（可能还有 QK-Norm），并用 GQA 共享 K
 
 ## 10. 篇目地图
 
-| 板块 | 篇目 |
-|---|---|
-| 基础 | 1 分词器 · 2 Embedding 与 LM Head |
-| 位置编码 | 3 正弦与可学习绝对位置编码 · 4 T5 相对位置偏置 · 5 RoPE · 6 长度扩展（PI、RoPE base、YaRN、DCA） · 7 Partial RoPE、Decoupled RoPE 与 NoPE |
-| 注意力 | 8 缩放点积与多头注意力 · 9 KV Cache 与 Prefill / Decode · 10 MQA 与 GQA · 11 MLA · 12 滑动窗口与局部 / 全局交错 · 13 NSA · 14 DSA 与 CSA / HCA · 15 线性注意力 · 16 Gated DeltaNet · 17 KDA · 18 Lightning Attention · 19 混合注意力架构 · 20 FlashAttention |
-| 归一化 | 21 LayerNorm、BatchNorm 与 RMSNorm · 22 Pre-Norm 与 Post-Norm · 23 QK-Norm |
-| FFN 与 MoE | 24 FFN 与激活函数 · 25 MoE 基础与负载均衡 · 26 DeepSeekMoE · 27 LatentMoE |
-| 残差连接 | 28 残差连接与 Pre-Norm 稀释 · 29 Hyper-Connections 与 mHC · 30 Attention Residuals |
-| 解码 | 31 采样策略 |
+这一篇是整个系列的基础。从第 2 篇开始，每一篇对应基础架构中的一个部件，把这个部件的一系列变体放在同一篇里讲清楚：
 
-**怎么读.** 第一次系统学习，建议按 1、2、3、5、8、9、10、21、22、24、25、28、31 的顺序读，这是现代大语言模型的主干。关注长上下文与推理效率，读第 6、7、9 到 20 篇。关注前沿架构，读第 7、11、14、16、17、19、27、29、30 篇。前置知识只需要线性代数、softmax 与交叉熵，以及反向传播的基本概念。
+| 篇目 | 部件 | 内容 |
+|---|---|---|
+| 1 | Transformer 架构基础 | 本篇：原始 Transformer 的每个部件、训练、推理与完整实现 |
+| 2 | 位置编码 | 正弦与可学习绝对位置编码、相对位置偏置（Shaw、Transformer-XL、T5、ALiBi）、RoPE、长度扩展（PI、NTK、YaRN、DCA）、Partial RoPE、Decoupled RoPE、NoPE |
+| 3 | 注意力 | 缩放点积与多头注意力、KV Cache 与 Prefill / Decode、MQA 与 GQA、MLA、滑动窗口与局部 / 全局交错、稀疏注意力（NSA、DSA 等）、线性注意力与 Gated DeltaNet、KDA、Lightning Attention、混合注意力、FlashAttention |
+| 4 | 归一化 | LayerNorm、BatchNorm 与 RMSNorm、Pre-Norm 与 Post-Norm、QK-Norm |
+| 5 | FFN 与 MoE | 激活函数与 SwiGLU、MoE 与负载均衡、DeepSeekMoE、LatentMoE |
+| 6 | 残差连接 | 残差连接与 Pre-Norm 稀释、Hyper-Connections 与 mHC、Attention Residuals |
+| 7 | 解码与采样 | 贪心、束搜索、温度、Top-k、Top-p、Min-p 等解码与采样策略 |
+
+**怎么读.** 第一次系统学习，按顺序读即可，每一篇都以本篇的基础版本为起点。关注长上下文与推理效率，重点读第 2 篇的长度扩展和第 3 篇。前置知识只需要线性代数、softmax 与交叉熵，以及反向传播的基本概念。
 
 ## 参考文献
 
