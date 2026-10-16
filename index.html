@@ -497,7 +497,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Reinforcement Learning for LLMs</span><span lang="zh">LLM 强化学习</span></h3>
-          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
+          <span class="series-count"><span lang="en">4 posts</span><span lang="zh">4 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Foundations of RL for LLMs: Policy Gradients, KL Regularization, RLHF and RLVR</span><span lang="zh">LLM 强化学习基础：从策略梯度、KL 约束到 RLHF 与 RLVR</span></h4>
@@ -516,6 +516,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">Direct Preference Optimization from the ground up: the Bradley-Terry model, the closed-form optimal policy of the KL-regularized objective, why the partition function cancels, the resulting loss and its gradient, what beta really controls, and what the implicit reward is. It then covers DPO&#x27;s known failure modes (distribution shift from being offline, likelihood displacement, length exploitation, overfitting under deterministic preferences, dependence on the SFT starting point), the variants that target each of them (IPO, KTO, ORPO, SimPO, RSO, online and iterative DPO, Step-DPO, TDPO, beta-DPO), and the debates around offline versus online preference learning and DPO versus PPO. It ends with the data conditions and tasks DPO fits. A NumPy toy reproduces likelihood displacement.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 28 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/rl/dpo/" aria-label="The DPO Line: Solving RL Away in Closed Form, and the Limits of Offline Preference Optimization"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">The GRPO Line: Group-Relative Advantages, RLVR, and the Debates They Started</span><span lang="zh">GRPO 主线：组内比较、RLVR 与它引发的争论</span></h4>
+          <p class="entry-sum">GRPO as introduced in DeepSeekMath and scaled in DeepSeek-R1: group sampling, group-normalized advantages, the KL term moved into the loss, and the R1-Zero and R1 recipes. It places GRPO in the critic-free family (REINFORCE, RLOO, ReMax, REINFORCE++), works through the known biases (length normalization, standard-deviation scaling, zero-variance groups, token versus sequence importance ratios), and covers the variants that fix them: DAPO, Dr.GRPO, GSPO, CISPO, LitePPO and common &quot;GRPO+&quot; tricks. The second half covers the open debates: does RLVR expand reasoning or only sharpen sampling (pass@k), entropy collapse and its covariance mechanism, response-length growth, spurious rewards and one-shot RLVR, and the training-inference mismatch that destabilizes large runs, especially for MoE models. It ends with the tasks GRPO fits. Group advantages and the entropy mechanism come with tested NumPy code.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 32 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/rl/grpo/" aria-label="The GRPO Line: Group-Relative Advantages, RLVR, and the Debates They Started"></a>
         </article>
         </div>
       </details>
