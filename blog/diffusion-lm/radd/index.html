@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RADD：吸收态扩散在学干净数据的条件分布 · Jiaoyang Ruan</title>
+<meta name="description" content="RADD proves that the concrete score of absorbing discrete diffusion factors into an analytic time-dependent scalar times a time-independent conditional distribution of clean data. This explains SEDD&#x27;s scaling trick, justifies dropping time conditioning from the network, and enables a caching sampler whose expected number of function evaluations has a closed form. The post also proves that, as the total noise goes to infinity, the denoising score entropy loss equals the training objective of any-order autoregressive models, through a chain of three equivalent losses, and discusses what this says about the likelihood of masked diffusion models.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">扩散语言模型 · 第 4 篇</p>
+    <h1>RADD：吸收态扩散在学干净数据的条件分布</h1>
+    <p class="subtitle">RADD: Absorbing Discrete Diffusion Secretly Models Conditional Distributions of Clean Data</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">扩散语言模型</span><span class="tag">吸收态扩散</span><span class="tag">RADD</span><span class="tag">任意顺序自回归</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#0-这一篇要回答的问题">0. 这一篇要回答的问题</a></li>
+<li><a href="#1-背景回顾">1. 背景回顾</a><ul>
+<li><a href="#11-记号行约定">1.1 记号：行约定</a></li>
+<li><a href="#12-吸收态矩阵">1.2 吸收态矩阵</a></li>
+<li><a href="#13-逆向过程与-dse-损失">1.3 逆向过程与 DSE 损失</a></li>
+<li><a href="#14-任意顺序自回归模型ao-arm">1.4 任意顺序自回归模型（AO-ARM）</a></li>
+</ul>
+</li>
+<li><a href="#2-定理-1concrete-score-的解析分解">2. 定理 1：concrete score 的解析分解</a><ul>
+<li><a href="#21-只需要建模-m-到-token-的比值">2.1 只需要建模 [M] 到 token 的比值</a></li>
+<li><a href="#22-定理与证明">2.2 定理与证明</a></li>
+<li><a href="#23-解释-sedd-的-scaling-trick">2.3 解释 SEDD 的 scaling trick</a></li>
+<li><a href="#24-radd-的参数化">2.4 RADD 的参数化</a></li>
+</ul>
+</li>
+<li><a href="#3-缓存采样器">3. 缓存采样器</a><ul>
+<li><a href="#31-缓存的原理">3.1 缓存的原理</a></li>
+<li><a href="#32-期望网络调用次数的闭式解">3.2 期望网络调用次数的闭式解</a></li>
+<li><a href="#33-euler-与-tweedie-148-leaping-在这里等价">3.3 Euler 与 Tweedie $\tau$-leaping 在这里等价</a></li>
+</ul>
+</li>
+<li><a href="#4-定理-2吸收态扩散等价于任意顺序自回归">4. 定理 2：吸收态扩散等价于任意顺序自回归</a><ul>
+<li><a href="#41-定理">4.1 定理</a></li>
+<li><a href="#42-第一步从-dse-到-166-dce">4.2 第一步：从 DSE 到 $t$-DCE</a></li>
+<li><a href="#43-第二步从-192-dce-到-193-dce">4.3 第二步：从 $t$-DCE 到 $\lambda$-DCE</a></li>
+<li><a href="#44-第三步从-219-dce-到-ao-arm">4.4 第三步：从 $\lambda$-DCE 到 AO-ARM</a></li>
+<li><a href="#45-等价链条与实用意义">4.5 等价链条与实用意义</a></li>
+</ul>
+</li>
+<li><a href="#5-对似然的新理解">5. 对似然的新理解</a></li>
+<li><a href="#6-实验与局限">6. 实验与局限</a></li>
+<li><a href="#7-小结">7. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="0-这一篇要回答的问题">0. 这一篇要回答的问题</h2>
+<p>前三篇里，吸收态（[MASK]）扩散一次次胜出，而且有两个现象反复出现：</p>
+<ul>
+<li>SEDD 一文 5.4 节推出，吸收态下真实的 concrete score 可以写成"时间的标量 × 与时间无关的条件分布"；</li>
+<li>MDLM 一文 9.2 节提到，如果去噪网络不依赖时间，就可以缓存网络输出、大幅减少采样时的计算。</li>
+</ul>
+<p>RADD（Reparameterized Absorbing Discrete Diffusion，Ou et al., ICLR 2025）把这两点做成了严格的定理，并进一步回答了一个更根本的问题：<strong>吸收态扩散到底在学什么？</strong> 答案是：</p>
+<ol>
+<li>它在学<strong>干净数据的条件分布</strong> $p_0(x^i\mid x^{\text{UM}})$：给定一部分没被 mask 的 token，预测被 mask 位置的 token。这个分布与时间无关；</li>
+<li>它的训练目标在 $\bar\sigma(T)\to\infty$ 时<strong>恰好等于任意顺序自回归模型（AO-ARM）的训练目标</strong>：对所有可能的生成顺序取平均的负对数似然。</li>
+</ol>
+<p>第一点让模型可以去掉时间输入、做缓存采样；第二点把扩散模型和自回归模型放进了同一个框架。</p>
+<p>同期的 Zheng et al.（2024）也独立得到了"掩码扩散模型实际上与时间无关"的结论。</p>
+<h2 id="1-背景回顾">1. 背景回顾</h2>
+<h3 id="11-记号行约定">1.1 记号：行约定</h3>
+<p>RADD 沿用 CTMC 文献中另一种常见的约定，和 SEDD 一文的列约定相反，这里先说清楚：</p>
+<ul>
+<li>$Q_t(x,\hat x)$ 表示从 $x$ 跳到 $\hat x$ 的速率，矩阵的<strong>每一行</strong>和为 0；</li>
+<li>转移概率 $p_{t+\Delta t|t}(\hat x\mid x) = \delta_{x\hat x} + Q_t(x,\hat x)\,\Delta t + o(\Delta t)$；</li>
+<li>记 $P_{t|s}(x,\hat x) := p_{t|s}(\hat x\mid x)$，它满足 Kolmogorov 前向方程 $\frac{d}{dt}P_{t|s} = P_{t|s}Q_t$；</li>
+<li>取 $Q_t = \sigma(t)Q$，解为 $P_{t|s} = \exp\big((\bar\sigma(t) - \bar\sigma(s))Q\big)$，$\bar\sigma(t) = \int_0^t\sigma(s)\,ds$。</li>
+</ul>
+<p>两种约定只差一个转置。SEDD 一文中的 $Q_t(y,x)$（从 $x$ 到 $y$）就是这里的 $Q_t(x,y)$。</p>
+<h3 id="12-吸收态矩阵">1.2 吸收态矩阵</h3>
+<p>在行约定下，词表有 $N$ 个状态，最后一个是 [MASK]（记为 [M]）：</p>
+<p>$$
+Q^{\text{absorb}} =
+\begin{bmatrix}
+-1 &amp; 0 &amp; \cdots &amp; 0 &amp; 1 \\
+0 &amp; -1 &amp; \cdots &amp; 0 &amp; 1 \\
+\vdots &amp; \vdots &amp; \ddots &amp; \vdots &amp; \vdots \\
+0 &amp; 0 &amp; \cdots &amp; -1 &amp; 1 \\
+0 &amp; 0 &amp; \cdots &amp; 0 &amp; 0
+\end{bmatrix}
+$$</p>
+<p>前 $N-1$ 行对应普通 token：以速率 1 跳到 [M]；最后一行对应 [M]：全为 0，不再离开。它就是 SEDD 一文中列约定吸收态矩阵的转置。</p>
+<p>由 SEDD 一文 5.3 节的矩阵指数，单个 token 在 $t$ 时刻保持原样的概率是 $e^{-\bar\sigma(t)}$，变成 [M] 的概率是 $1-e^{-\bar\sigma(t)}$。</p>
+<h3 id="13-逆向过程与-dse-损失">1.3 逆向过程与 DSE 损失</h3>
+<p>逆向速率（行约定）为</p>
+<p>$$
+\tilde Q_t(x_t,\hat x_t) =
+\begin{cases}
+\dfrac{p_t(\hat x_t)}{p_t(x_t)}\,Q_t(\hat x_t, x_t), &amp; \hat x_t\ne x_t \\[8pt]
+-\sum_{k\ne x_t}\tilde Q_t(x_t,k), &amp; \hat x_t = x_t
+\end{cases}
+$$</p>
+<p>用网络 $s_\theta(x_t,t)\approx\big[p_t(\hat x_t)/p_t(x_t)\big]_{\hat x_t}$ 估计比值，用去噪 score entropy（DSE）训练：</p>
+<p>$$
+\mathcal L^T_{\text{DSE}}(x_0) = \int_0^T\mathbb E_{x_t\sim p_{t|0}(\cdot\mid x_0)}\sum_{\hat x_t\ne x_t}Q_t(\hat x_t, x_t)\left(s_\theta(x_t,t)_{\hat x_t} - \frac{p_{t|0}(\hat x_t\mid x_0)}{p_{t|0}(x_t\mid x_0)}\log s_\theta(x_t,t)_{\hat x_t} + K\!\left(\frac{p_{t|0}(\hat x_t\mid x_0)}{p_{t|0}(x_t\mid x_0)}\right)\right)dt
+$$</p>
+<p>这就是 SEDD 一文中的 $\mathcal L_{\text{DWDSE}}$，$K(a) = a(\log a - 1)$。</p>
+<p>多维情形下，各位置独立加噪，只需对汉明距离为 1 的序列建模比值：</p>
+<p>$$
+s_\theta(x_t,t)[i,\hat x^i_t]\approx\frac{p_t(x^1_t\dots\hat x^i_t\dots x^d_t)}{p_t(x^1_t\dots x^i_t\dots x^d_t)}
+$$</p>
+<p>逆向速率相应地为</p>
+<p>$$
+\tilde Q_t\big(x^1_t\dots x^i_t\dots x^d_t,\ x^1_t\dots\hat x^i_t\dots x^d_t\big) = Q^{\text{tok}}_t(\hat x^i_t, x^i_t)\,\frac{p_t(x^1_t\dots\hat x^i_t\dots x^d_t)}{p_t(x^1_t\dots x^i_t\dots x^d_t)}
+$$</p>
+<h3 id="14-任意顺序自回归模型ao-arm">1.4 任意顺序自回归模型（AO-ARM）</h3>
+<p>普通自回归模型按固定顺序（从左到右）分解联合分布。<strong>任意顺序自回归模型</strong>（Uria et al., 2014；Hoogeboom et al., 2022；Shih et al., 2022）对 $d$ 个位置的<strong>所有排列</strong> $\pi$ 都做自回归分解：</p>
+<p>$$
+p(x) = \prod_{k=1}^d p\big(x^{\pi(k)}\mid x^{\pi(&lt;k)}\big)
+$$</p>
+<p>它用一个共享参数的网络 $q_\theta(\cdot\mid\cdot\,;\pi)$ 建模所有单变量条件分布，用 [MASK] 表示还没生成的位置。训练目标是对所有顺序（均匀分布 $U_\pi$）取平均的负对数似然：</p>
+<p>$$
+\mathcal L_{\text{AO}}(x_0) = \mathbb E_{\pi\sim U_\pi}\sum_{l=1}^d -\log q_\theta\big(x_0^{\pi(l)}\mid x_0^{\pi(&lt;l)};\pi\big)
+$$</p>
+<p>如果网络只看"哪些位置已知、它们的值是什么"，而不看这些位置是以什么顺序被填上的，那么条件分布可以写成 $q_\theta(x^i\mid x^{\text{UM}})$，不再依赖 $\pi$。下文都采用这种形式。</p>
+<h2 id="2-定理-1concrete-score-的解析分解">2. 定理 1：concrete score 的解析分解</h2>
+<h3 id="21-只需要建模-m-到-token-的比值">2.1 只需要建模 [M] 到 token 的比值</h3>
+<p>吸收态下，前向过程中普通 token 只会变成 [M]，[M] 不会变化。所以对任何普通 token $x_t^i\ne[\text M]$ 和任何 $\hat x^i_t\ne x^i_t$，前向速率 $Q^{\text{absorb}}(\hat x^i_t, x^i_t)$ 都是 0：</p>
+<ul>
+<li>若 $\hat x^i_t$ 是另一个普通 token，普通 token 之间不跳转；</li>
+<li>若 $\hat x^i_t = [\text M]$，[M] 不会跳回普通 token。</li>
+</ul>
+<p>因此对应的逆向速率</p>
+<p>$$
+\tilde Q_t\big(x^1_t\dots x^i_t\dots x^d_t,\ x^1_t\dots\hat x^i_t\dots x^d_t\big) = \sigma(t)\,Q^{\text{absorb}}(\hat x^i_t, x^i_t)\,\frac{p_t(\cdots\hat x^i_t\cdots)}{p_t(\cdots x^i_t\cdots)} = 0
+$$</p>
+<p>不管比值是多少都乘以 0。<strong>唯一需要建模的比值是 $x^i_t = [\text M]$、$\hat x^i_t\ne[\text M]$ 的情形</strong>，也就是"把一个 [M] 换成某个 token"。这和逆向过程只会揭开 mask、不会修改已揭开 token 的直觉一致。</p>
+<h3 id="22-定理与证明">2.2 定理与证明</h3>
+<p><strong>定理 1.</strong> 设 $x_t = x^1_t\dots x^i_t\dots x^d_t$，$\hat x_t = x^1_t\dots\hat x^i_t\dots x^d_t$，其中 $x^i_t = [\text M]$、$\hat x^i_t\ne[\text M]$。则</p>
+<p>$$
+\underbrace{\frac{p_t(\hat x_t)}{p_t(x_t)}}_{\text{concrete score}} = \underbrace{\frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}}_{\text{只依赖时间}}\ \underbrace{p_0\big(\hat x^i_t\mid x_t^{\text{UM}}\big)}_{\text{只依赖干净数据}}
+$$</p>
+<p>其中 $x_t^{\text{UM}}$ 是 $x_t$ 中所有未被 mask 的 token（包括它们的位置和值），$p_0(\cdot\mid x_t^{\text{UM}})$ 是干净数据分布在给定这些 token 时、位置 $i$ 上的条件分布。</p>
+<p><strong>证明.</strong> 设 $x_t$ 中被 mask 的位置集合为 $M$，$|M| = k$。要得到 $x_t$，干净序列 $x_0$ 必须满足：在 $M$ 之外的位置上与 $x_t^{\text{UM}}$ 一致（这些位置恰好都没被 mask），而在 $M$ 内的位置可以是任意 token（它们都被 mask 了）。由各位置独立加噪：</p>
+<p>$$
+p_t(x_t) = \sum_{x_0}p_0(x_0)\,p_{t|0}(x_t\mid x_0)
+= \big(e^{-\bar\sigma(t)}\big)^{d-k}\big(1-e^{-\bar\sigma(t)}\big)^{k}\sum_{x_0:\ x_0^{\text{UM}} = x_t^{\text{UM}}}p_0(x_0)
+$$</p>
+<p>最后的求和就是干净数据在未 mask 位置上的边缘概率 $p_0(x_t^{\text{UM}})$。</p>
+<p>$\hat x_t$ 和 $x_t$ 只在位置 $i$ 上不同：$\hat x_t$ 的未 mask 部分是 $x_t^{\text{UM}}$ 加上"位置 $i$ 为 $\hat x^i_t$"，被 mask 的位置少了一个。同理</p>
+<p>$$
+p_t(\hat x_t) = \big(e^{-\bar\sigma(t)}\big)^{d-k+1}\big(1-e^{-\bar\sigma(t)}\big)^{k-1}\,p_0\big(x_t^{\text{UM}},\ x^i = \hat x^i_t\big)
+$$</p>
+<p>两式相除：</p>
+<p>$$
+\frac{p_t(\hat x_t)}{p_t(x_t)} = \frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\cdot\frac{p_0\big(x_t^{\text{UM}},\ x^i = \hat x^i_t\big)}{p_0\big(x_t^{\text{UM}}\big)} = \frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\,p_0\big(\hat x^i_t\mid x_t^{\text{UM}}\big)
+$$</p>
+<p>$\square$</p>
+<p><strong>读法.</strong> concrete score 原本是一个看起来复杂的、随时间变化的量。定理 1 说它的全部时间依赖都在一个已知的标量里，剩下的部分是一个与时间无关、有明确含义的条件分布：<strong>给定看得见的 token，被遮住的位置是什么。</strong> 这正是 BERT 式掩码语言模型在学的东西。</p>
+<p>注意条件分布中的条件是"未 mask 的 token 是什么"，<strong>不包括 mask 了多少</strong>。$t$ 不同时，$x_t$ 中 mask 的数量不同，但只要未 mask 的部分相同，条件分布就相同。</p>
+<h3 id="23-解释-sedd-的-scaling-trick">2.3 解释 SEDD 的 scaling trick</h3>
+<p>SEDD 的官方实现里，吸收态模型对网络输出做了一个缩放：对数比值减去 $\log(e^{\bar\sigma(t)} - 1)$。写成比值形式，相当于</p>
+<p>$$
+s_\theta(x_t,t) = \frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\,\tilde s_\theta(x_t,t)
+$$</p>
+<p>（因为 $\frac{1}{e^{\bar\sigma}-1} = \frac{e^{-\bar\sigma}}{1-e^{-\bar\sigma}}$。）SEDD 把这当作一个经验技巧。定理 1 说明了它为什么有效：缩放把时间相关的标量从网络的学习任务中剥离出去，$\tilde s_\theta$ 只需要拟合与时间无关的 $p_0(\hat x^i\mid x^{\text{UM}})$，学习难度大大降低。</p>
+<h3 id="24-radd-的参数化">2.4 RADD 的参数化</h3>
+<p>既然 $\tilde s_\theta$ 应当拟合的是一个与时间无关的<strong>概率分布</strong>，RADD 干脆：</p>
+<ol>
+<li><strong>去掉时间输入</strong>：网络 $c_\theta(x_t)$ 不再以 $t$ 为条件；</li>
+<li><strong>用 softmax 输出归一化的分布</strong>：</li>
+</ol>
+<p>$$
+c_\theta(x_t)[i,\hat x^i_t] = q_\theta\big(\hat x^i_t\mid x_t^{\text{UM}}\big)\approx p_0\big(\hat x^i_t\mid x_t^{\text{UM}}\big)
+$$</p>
+<p>比值由 $s_\theta = \frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\,c_\theta$ 给出。网络结构和一个去掉时间嵌入、使用双向注意力的标准 Transformer 一样，最后接 softmax（[M] 的概率设为 0）。这和 MDLM 的 SUBS 参数化在本质上相同（见 MDLM 一文第 8 节），区别在于 RADD 明确证明了时间条件是多余的，并把它去掉了。</p>
+<p>去掉时间输入不损失表达能力：因为最优解 $p_0(\cdot\mid x^{\text{UM}})$ 本身与 $t$ 无关，任何依赖 $t$ 的网络在最优时也不会用到 $t$。</p>
+<h2 id="3-缓存采样器">3. 缓存采样器</h2>
+<h3 id="31-缓存的原理">3.1 缓存的原理</h3>
+<p>吸收态的逆向过程中，一个位置一旦从 [M] 变成 token，就不再变化。长度为 $d$ 的序列，整个采样过程中<strong>序列状态最多改变 $d$ 次</strong>。在其余步骤中，$x_t$ 与上一步完全相同。</p>
+<p>RADD 的网络 $c_\theta(x_t)$ 与时间无关，所以只要 $x_t$ 没变，输出就不变，可以直接复用上一次的结果，不用重新调用网络。SEDD 的网络以 $t$ 为输入，即使 $x_t$ 不变，$t$ 变了输出也会变，所以不能这样缓存。</p>
+<h3 id="32-期望网络调用次数的闭式解">3.2 期望网络调用次数的闭式解</h3>
+<p>设采样步数为 $n$，生成长度为 $l$，使用 log-linear 噪声调度（被 mask 的概率 $1-e^{-\bar\sigma(t)}$ 随 $t$ 线性增长）。论文给出期望的网络调用次数（E-NFEs）：</p>
+<p>$$
+\text{E-NFEs}(n) = n\left(1 - \left(1-\frac1n\right)^l\right)
+$$</p>
+<p><strong>推导.</strong> 关键一步是：在这个设置下，<strong>每个位置在哪一步被揭开，是在 $n$ 步中均匀且独立地分布的</strong>。</p>
+<p>为简单起见取 $\epsilon\to 0$，此时保留概率 $\alpha_t = 1-t$。把 $[0,1]$ 均匀分成 $n$ 步，从 $t = k/n$ 走到 $(k-1)/n$。由 MDLM 一文 3.2 节的后验，一个仍被 mask 的位置在这一步被揭开的概率是</p>
+<p>$$
+\frac{\alpha_{(k-1)/n} - \alpha_{k/n}}{1-\alpha_{k/n}} = \frac{1/n}{k/n} = \frac1k
+$$</p>
+<p>于是该位置恰好在 $t = k/n$ 这一步被揭开的概率是"前面各步都没揭开"乘以"这一步揭开"：</p>
+<p>$$
+\prod_{j=k+1}^{n}\left(1-\frac1j\right)\cdot\frac1k = \frac{k}{n}\cdot\frac1k = \frac1n
+$$</p>
+<p>（连乘是 $\frac{n-1}{n}\cdot\frac{n-2}{n-1}\cdots\frac{k}{k+1} = \frac kn$。）对每个 $k$ 都是 $1/n$，所以揭开的步数在 $n$ 步中均匀分布；各位置的采样相互独立，所以它们的揭开步数也相互独立。</p>
+<p>需要调用网络的步数，就是"至少有一个位置被揭开"的步数（加上第一步的那一次调用，这里不影响量级）。$l$ 个位置各自独立均匀地落在 $n$ 个步上，某一步一个都没落到的概率是 $(1-\frac1n)^l$，所以被落到的步数的期望是</p>
+<p>$$
+n\left(1 - \left(1-\frac1n\right)^l\right)
+$$</p>
+<p>$\square$</p>
+<p><strong>读法.</strong></p>
+<ul>
+<li>当 $n\ll l$ 时，$(1-\frac1n)^l\approx 0$，E-NFEs $\approx n$，几乎每一步都有位置被揭开，缓存帮不上忙；</li>
+<li>当 $n$ 增大时，E-NFEs 单调增加，但始终小于 $\min(n, l)$，并在 $n\to\infty$ 时趋于 $l$；</li>
+<li>所以步数越多，缓存节省的比例越大。例如 $l = 1024$、$n = 4096$ 时，E-NFEs $\approx 4096(1-e^{-1/4})\approx 906$，只需要不到四分之一的网络调用。</li>
+</ul>
+<p>这意味着可以用很细的时间离散化（离散化误差小、样本质量高），而计算量不会随步数无限增长。论文中，理论曲线与实测的 NFE 吻合得很好，RADD 在相同样本质量下的采样速度明显快于 SEDD（论文报告最多约 3.5 倍）。</p>
+<h3 id="33-euler-与-tweedie-148-leaping-在这里等价">3.3 Euler 与 Tweedie $\tau$-leaping 在这里等价</h3>
+<p>基于定理 1，可以把两种采样器在吸收态下的更新写得很具体。对一个被 mask 的位置，从 $t$ 到 $t-\Delta t$，记 $\alpha_t = e^{-\bar\sigma(t)}$：</p>
+<ul>
+<li><strong>Euler（$\tau$-leaping）</strong>：揭开成 token $v$ 的概率为 $\Delta t\cdot\sigma(t)\cdot\frac{\alpha_t}{1-\alpha_t}\,q_\theta(v\mid x_t^{\text{UM}})$；</li>
+<li><strong>Tweedie $\tau$-leaping</strong>：揭开成 $v$ 的概率为 $\frac{\alpha_{t-\Delta t}-\alpha_t}{1-\alpha_t}\,q_\theta(v\mid x_t^{\text{UM}})$（见 SEDD 一文 6.4 节）。</li>
+</ul>
+<p>在 log-linear 调度下（$\epsilon\to 0$），$\alpha_t = 1-t$，$\sigma(t) = \frac{1}{1-t}$：</p>
+<p>$$
+\Delta t\cdot\frac{1}{1-t}\cdot\frac{1-t}{t} = \frac{\Delta t}{t},\qquad
+\frac{(1-t+\Delta t) - (1-t)}{t} = \frac{\Delta t}{t}
+$$</p>
+<p>两者完全相同。所以论文证明，在 log-linear 调度下，这两种采样方法对吸收态扩散是<strong>等价的</strong>。一般调度下，Tweedie 的版本用的是精确差分 $\alpha_{t-\Delta t}-\alpha_t$，Euler 用的是一阶近似 $-\alpha_t'\Delta t$，两者只差 $O(\Delta t^2)$。</p>
+<h2 id="4-定理-2吸收态扩散等价于任意顺序自回归">4. 定理 2：吸收态扩散等价于任意顺序自回归</h2>
+<h3 id="41-定理">4.1 定理</h3>
+<p><strong>定理 2.</strong> 当 $\bar\sigma(T)\to+\infty$ 时（即 $T$ 时刻所有位置都被 mask），在 RADD 参数化下，吸收态扩散的 DSE 损失与 AO-ARM 的损失相等：</p>
+<p>$$
+\mathcal L^T_{\text{DSE}}(x_0) = \mathcal L_{t\text{-DCE}}^T(x_0) = \mathcal L_{\lambda\text{-DCE}}(x_0) = \mathcal L_{\text{AO}}(x_0)
+$$</p>
+<p>证明通过两个中间损失分三步完成。</p>
+<h3 id="42-第一步从-dse-到-166-dce">4.2 第一步：从 DSE 到 $t$-DCE</h3>
+<p>把定理 1 的参数化 $s_\theta(x_t,t)[i,v] = r_t\,q_\theta(v\mid x_t^{\text{UM}})$ 代入 DSE，其中 $r_t = \frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}$。由 2.1 节，只有被 mask 的位置 $i$ 有非零的前向速率：从 token $v$ 跳到 [M] 的速率 $\sigma(t)Q^{\text{absorb}}(v,[\text M]) = \sigma(t)$；条件比值只在 $v = x_0^i$ 时非零，等于 $r_t$（SEDD 一文 5.4 节）。对一个被 mask 的位置，括号内是</p>
+<p>$$
+\sum_{v}r_t\,q_\theta(v\mid x_t^{\text{UM}}) - r_t\log\big(r_t\,q_\theta(x_0^i\mid x_t^{\text{UM}})\big) + K(r_t)
+$$</p>
+<p><strong>第一项是常数</strong>：$q_\theta$ 是归一化的分布，$\sum_v q_\theta(v\mid\cdot) = 1$，所以第一项等于 $r_t$，与 $\theta$ 无关。这就是为什么可以把 DSE 中的 $s_\theta$ 那一项去掉，而不只是"近似地"去掉：在 RADD 参数化下它本来就是常数。再展开 $K(r_t) = r_t\log r_t - r_t$，与第一项和对数中的 $r_t\log r_t$ 相加正好抵消，只剩</p>
+<p>$$
+-\,r_t\log q_\theta(x_0^i\mid x_t^{\text{UM}})
+$$</p>
+<p>乘上权重 $\sigma(t)$ 并对时间积分，得到 <strong>$t$-去噪交叉熵</strong>（$t$-DCE）损失：</p>
+<p>$$
+\mathcal L^T_{t\text{-DCE}}(x_0) = \int_0^T\mathbb E_{x_t\sim p_{t|0}(\cdot\mid x_0)}\left[\sum_{i:\,x_t^i = [\text M]} -\frac{\sigma(t)\,e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\log q_\theta\big(x_0^i\mid x_t^{\text{UM}}\big)\right]dt
+$$</p>
+<p>和 MDLM 一文第 8 节一样，这里 DSE 与 $t$-DCE 逐项相等，连常数都一致。</p>
+<p>（论文中 $t$-DCE 的对数里保留了 $r_t$，即 $\log\big(r_t\,q_\theta\big)$，对应于不展开 $K$ 而只去掉 $s_\theta$ 项的写法。多出来的 $-\sigma r_t\log r_t$ 一项在 $\bar\sigma(T)\to\infty$ 时积分为 0，见下一步的脚注，所以两种写法在定理 2 的条件下一致。）</p>
+<h3 id="43-第二步从-192-dce-到-193-dce">4.3 第二步：从 $t$-DCE 到 $\lambda$-DCE</h3>
+<p>受 VDM（Variational Diffusion Models）"用信噪比代替时间作积分变量"的启发，做变量代换</p>
+<p>$$
+\lambda(t) = 1 - e^{-\bar\sigma(t)}
+$$</p>
+<p>$\lambda$ 就是一个 token 在 $[0,t]$ 内被 mask 的概率。$t$ 从 0 到 $T$ 时，$\lambda$ 从 0 增到 $1-e^{-\bar\sigma(T)}\to 1$。求导：</p>
+<p>$$
+d\lambda = \sigma(t)\,e^{-\bar\sigma(t)}\,dt
+$$</p>
+<p>于是 $t$-DCE 中的权重恰好是</p>
+<p>$$
+\frac{\sigma(t)\,e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\,dt = \frac{d\lambda}{\lambda}
+$$</p>
+<p>而 $x_t$ 的分布只通过 $\lambda$ 依赖于 $t$（每个位置独立地以概率 $\lambda$ 被 mask）。所以</p>
+<p>$$
+\mathcal L_{\lambda\text{-DCE}}(x_0) := \int_0^1\frac1\lambda\,\mathbb E_{x_\lambda\sim p_\lambda(\cdot\mid x_0)}\left[\sum_{i:\,x_\lambda^i = [\text M]} -\log q_\theta\big(x_0^i\mid x_\lambda^{\text{UM}}\big)\right]d\lambda
+$$</p>
+<p>其中 $p_\lambda(x_\lambda\mid x_0)$ 表示 $x_0$ 的每个位置独立地以概率 $\lambda$ 被 mask。这就是 MDLM 线性调度下"按 $1/t$ 加权的 MLM 损失"，这里的 $\lambda$ 对应那里的 $t$。噪声调度 $\sigma(t)$ 完全从损失中消失了，这是 MDLM 一文 6.2 节"调度不变性"的另一种证明。</p>
+<p><strong>脚注：$\log r_t$ 项为何为 0.</strong> 若保留论文写法中的 $-\frac{d\lambda}{\lambda}\log r$，其中 $r = \frac{1-\lambda}{\lambda}$，对被 mask 的位置数（期望为 $d\cdot\lambda$，$d$ 是序列长度）求期望后得到 $-d\int_0^1\log\frac{1-\lambda}{\lambda}\,d\lambda$。由于 $\int_0^1\log(1-\lambda)\,d\lambda = \int_0^1\log\lambda\,d\lambda = -1$，这个积分为 0。</p>
+<h3 id="44-第三步从-219-dce-到-ao-arm">4.4 第三步：从 $\lambda$-DCE 到 AO-ARM</h3>
+<p>现在证明 $\lambda$ 上的积分可以解析算出，结果正好是 $\mathcal L_{\text{AO}}$。</p>
+<p><strong>把 $\lambda$-DCE 按 mask 集合展开.</strong> 记 $M\subseteq\{1,\dots,d\}$ 为被 mask 的位置集合，$|M| = k$。在 $p_\lambda$ 下 $M$ 出现的概率是 $\lambda^k(1-\lambda)^{d-k}$。记</p>
+<p>$$
+\ell(M) = \sum_{i\in M} -\log q_\theta\big(x_0^i\mid x_0^{\bar M}\big)
+$$</p>
+<p>为在 mask 集合 $M$ 下的损失（$\bar M$ 是未被 mask 的位置，$x_0^{\bar M}$ 就是 $x_\lambda^{\text{UM}}$）。则</p>
+<p>$$
+\mathcal L_{\lambda\text{-DCE}} = \sum_{M\ne\varnothing}\ell(M)\int_0^1\frac1\lambda\,\lambda^k(1-\lambda)^{d-k}\,d\lambda
+= \sum_{M\ne\varnothing}\ell(M)\,B(k,\ d-k+1)
+$$</p>
+<p>其中 Beta 函数</p>
+<p>$$
+B(k,\ d-k+1) = \int_0^1\lambda^{k-1}(1-\lambda)^{d-k}\,d\lambda = \frac{(k-1)!\,(d-k)!}{d!}
+$$</p>
+<p><strong>把 AO-ARM 按 mask 集合展开.</strong> 在 $\mathcal L_{\text{AO}}$ 中，看随机顺序 $\pi$ 的第 $l$ 步：已经生成的位置是 $\pi(&lt;l)$，还没生成的位置集合 $M = \{\pi(l),\dots,\pi(d)\}$，大小为 $k = d-l+1$；这一步预测的是 $M$ 中的 $\pi(l)$。对均匀随机的 $\pi$：</p>
+<ul>
+<li>$M$ 是所有大小为 $k$ 的子集中均匀随机的一个，概率为 $1/\binom dk$；</li>
+<li>给定 $M$，被预测的位置 $\pi(l)$ 在 $M$ 中均匀随机，概率为 $1/k$。</li>
+</ul>
+<p>所以第 $l$ 步的期望损失是 $\sum_{|M| = k}\frac{1}{\binom dk}\cdot\frac1k\,\ell(M)$。对 $l$ 求和，即对 $k = 1,\dots,d$ 求和：</p>
+<p>$$
+\mathcal L_{\text{AO}} = \sum_{M\ne\varnothing}\frac{1}{\binom{d}{k}\,k}\,\ell(M)
+$$</p>
+<p><strong>比较系数.</strong></p>
+<p>$$
+\frac{1}{\binom dk\,k} = \frac{k!\,(d-k)!}{d!\,k} = \frac{(k-1)!\,(d-k)!}{d!} = B(k,\ d-k+1)
+$$</p>
+<p>两者对每个 $M$ 的系数完全相同。因此 $\mathcal L_{\lambda\text{-DCE}} = \mathcal L_{\text{AO}}$。$\square$</p>
+<p><strong>直觉.</strong> $\lambda$-DCE 中的权重 $\frac1\lambda$ 和 AO-ARM 中的 $\frac1k$ 起的是同一个作用：mask 得越多，被 mask 的位置越多，需要除以"每次只预测其中一个"的数量来平均。对 $\lambda$ 积分，正好把"随机 mask 比例下的 MLM"变成了"随机顺序下逐个预测"。</p>
+<h3 id="45-等价链条与实用意义">4.5 等价链条与实用意义</h3>
+<p>整个证明可以总结为</p>
+<p>$$
+\mathcal L^T_{\text{DSE}}(x_0)\ \Longleftrightarrow\ \mathcal L^T_{t\text{-DCE}}(x_0)\ \Longleftrightarrow\ \mathcal L_{\lambda\text{-DCE}}(x_0)\ \Longleftrightarrow\ \mathcal L_{\text{AO}}(x_0)
+$$</p>
+<p>第一个等价对任意 $T$ 成立；后两个需要 $\bar\sigma(T)\to\infty$，即最终全部被 mask。</p>
+<p><strong>实用意义：</strong></p>
+<ol>
+<li><strong>模型互通</strong>：吸收态扩散模型可以像 AO-ARM 一样采样（随机选一个顺序，每次揭开一个位置），AO-ARM 也可以像扩散模型一样并行揭开多个位置；</li>
+<li><strong>训练与评估</strong>：四种损失都可以用于训练和似然估计，可以选方差最小或实现最方便的一种；</li>
+<li><strong>蒙特卡洛估计</strong>：例如 $\lambda$-DCE 可以写成期望</li>
+</ol>
+<p>$$
+\mathcal L_{\lambda\text{-DCE}}(x_0) = \mathbb E_{\lambda\sim\mathcal U[0,1]}\,\frac1\lambda\,\mathbb E_{x_\lambda\sim p_\lambda(\cdot\mid x_0)}\left[\sum_{i:\,x_\lambda^i = [\text M]} -\log q_\theta\big(x_0^i\mid x_\lambda^{\text{UM}}\big)\right]
+$$</p>
+<p>AO-ARM 损失也可以写成先均匀采样 $k$、再均匀采样一个大小为 $k$ 的 mask 集合的期望。论文在实验中比较了用不同损失训练和评估的效果。</p>
+<h2 id="5-对似然的新理解">5. 对似然的新理解</h2>
+<p><strong>DSE 损失不只是一个上界.</strong> 传统观点认为 DSE（以及 MDLM 的 NELBO）是负对数似然的一个变分上界。定理 2 给出了更具体的解释：<strong>它是 AO-ARM 在所有 $d!$ 种顺序下的期望负对数似然。</strong></p>
+<p>把每个顺序 $\pi$ 看成一个自回归模型 $q_\pi(x) = \prod_l q_\theta(x^{\pi(l)}\mid x^{\pi(&lt;l)})$。则</p>
+<p>$$
+\mathcal L_{\text{AO}}(x) = \mathbb E_\pi\big[-\log q_\pi(x)\big]\ \ge\ -\log\mathbb E_\pi\big[q_\pi(x)\big]
+$$</p>
+<p>不等号由 Jensen 不等式得到。右边是"先随机选顺序、再按该顺序自回归生成"这个<strong>混合模型</strong>的负对数似然，而吸收态扩散在步数趋于无穷时的采样过程恰好就是这个混合模型（每个时刻揭开一个随机位置）。所以：</p>
+<ul>
+<li>如果 $q_\theta$ 完美地等于真实条件分布 $p_0(\cdot\mid\cdot)$，那么每个顺序都给出精确的 $\log p_0(x)$（链式法则对任意顺序都成立），不等号取等，损失就是精确的负对数似然；</li>
+<li>实际中 $q_\theta$ 不完美，不同顺序给出的 $q_\pi(x)$ 不一致，这时损失是混合模型似然的上界，差距来自不同顺序之间的不一致。</li>
+</ul>
+<p><strong>一种集成的视角.</strong> 尽管 AO-ARM 在不同顺序下可能不一致，它可以看作许多不同顺序的自回归模型共享参数的集成。这种集成可能比固定顺序的模型更鲁棒，也解释了为什么掩码扩散天然支持填空、任意顺序生成等能力。另一方面，"要对所有顺序都学好"也是一个比"只学从左到右"更难的任务，这是掩码扩散在同等算力下困惑度仍落后于从左到右自回归模型的一个可能原因。</p>
+<p><strong>与已有工作的联系.</strong> Hoogeboom et al.（2022）的 ARDM 已经指出吸收态扩散在连续时间极限下与任意顺序自回归模型有密切联系。RADD 的贡献在于从 SEDD 的 concrete score 出发，通过定理 1 给出了完整、显式的等价证明，并把它和 DSE、MDLM 式的损失统一到一条等价链上。</p>
+<h2 id="6-实验与局限">6. 实验与局限</h2>
+<p><strong>实验.</strong> 论文在 OpenWebText 上训练 GPT-2 small 规模的模型，与 SEDD 等基线比较：</p>
+<ul>
+<li>去掉时间条件后，RADD 的零样本困惑度与 SEDD 相当或更好，在同规模的扩散模型中达到当时的领先水平；</li>
+<li>用 $\lambda$-DCE 或 AO 损失训练，比用 DSE 训练收敛更快；</li>
+<li>缓存采样器的实测 NFE 与 3.2 节的理论曲线吻合，在相同样本质量下采样速度明显快于 SEDD。</li>
+</ul>
+<p><strong>局限.</strong></p>
+<ul>
+<li><strong>只适用于吸收态</strong>：定理 1 依赖于"[MASK] 一旦出现就不变、未 mask 的 token 就是干净 token"这一结构，均匀扩散等其他噪声没有这样的分解；</li>
+<li><strong>独立性近似仍在</strong>：缓存解决的是计算量问题，但同一步内多个位置独立揭开的近似依然存在，步数少时质量会下降；</li>
+<li><strong>与从左到右 AR 的差距</strong>：定理 2 说明掩码扩散在学一个比普通自回归更难的任务，困惑度的差距不会因为这个等价而自动消失；</li>
+<li><strong>已揭开 token 不可修改</strong>：与 MDLM 相同，早期的错误无法在后续纠正。</li>
+</ul>
+<h2 id="7-小结">7. 小结</h2>
+<ul>
+<li><strong>定理 1</strong>：吸收态扩散的 concrete score = $\frac{e^{-\bar\sigma(t)}}{1-e^{-\bar\sigma(t)}}\times p_0(\hat x^i\mid x^{\text{UM}})$。时间依赖全在已知标量里，网络要学的是与时间无关的干净数据条件分布，也就是 BERT 式的"给定可见 token 预测被遮住的 token"。</li>
+<li>这解释了 SEDD 的 scaling trick，也说明去掉时间输入不损失表达能力。<strong>RADD</strong> 因此用一个无时间条件、输出 softmax 的网络建模这个条件分布。</li>
+<li><strong>缓存采样</strong>：网络与时间无关、序列最多变化 $d$ 次，所以可以缓存。log-linear 调度下每个位置的揭开步均匀独立，E-NFEs $= n(1-(1-\frac1n)^l)$，不超过 $\min(n,l)$。</li>
+<li><strong>定理 2</strong>：$\bar\sigma(T)\to\infty$ 时，DSE 损失 = $t$-DCE = $\lambda$-DCE = AO-ARM 损失。关键是 $\frac{1}{\lambda}$ 加权对 $\lambda$ 的积分等于 Beta 函数，恰好是任意顺序自回归中 $\frac{1}{\binom dk k}$ 的系数。</li>
+<li><strong>似然的含义</strong>：掩码扩散的训练目标是所有生成顺序下自回归负对数似然的平均，是"随机顺序自回归"混合模型似然的上界；条件分布完美时取等。</li>
+</ul>
+<p>到这里，扩散语言模型的四篇串成了一条线：D3PM 把扩散搬到离散空间，SEDD 找到了离散的 score，MDLM / MD4 把吸收态的目标化简成加权的 MLM，RADD 证明它学的是与时间无关的条件分布，并且等价于任意顺序的自回归模型。在这些理论基础之上，后来的 LLaDA、Dream 等工作把掩码扩散扩展到数十亿参数的规模，这会是之后文章的话题。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Uria, Murray &amp; Larochelle. <em>A Deep and Tractable Density Estimator.</em> ICML 2014.</li>
+<li>Kingma et al. <em>Variational Diffusion Models.</em> NeurIPS 2021.</li>
+<li>Hoogeboom et al. <em>Autoregressive Diffusion Models.</em> ICLR 2022.</li>
+<li>Shih, Sadigh &amp; Ermon. <em>Training and Inference on Any-Order Autoregressive Models the Right Way.</em> NeurIPS 2022.</li>
+<li>Campbell et al. <em>A Continuous Time Framework for Discrete Denoising Models.</em> NeurIPS 2022.</li>
+<li>Lou, Meng &amp; Ermon. <em>Discrete Diffusion Modeling by Estimating the Ratios of the Data Distribution.</em> ICML 2024.</li>
+<li>Sahoo et al. <em>Simple and Effective Masked Diffusion Language Models.</em> NeurIPS 2024.</li>
+<li>Shi et al. <em>Simplified and Generalized Masked Diffusion for Discrete Data.</em> NeurIPS 2024.</li>
+<li>Zheng et al. <em>Masked Diffusion Models are Secretly Time-Agnostic Masked Models and Exploit Inaccurate Categorical Sampling.</em> 2024.</li>
+<li>Ou et al. <em>Your Absorbing Discrete Diffusion Secretly Models the Conditional Distributions of Clean Data.</em> ICLR 2025.</li>
+<li>Nie et al. <em>Large Language Diffusion Models.</em> 2025.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>
