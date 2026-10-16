@@ -406,6 +406,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <h3 class="series-name"><span lang="en">Diffusion Language Models</span><span lang="zh">扩散语言模型</span></h3>
         <div class="entries">
         <article class="entry">
+          <h4><span lang="en">Diffusion Language Models: Series Overview</span><span lang="zh">扩散语言模型：系列导读</span></h4>
+          <p class="entry-sum">A reading guide to four posts on discrete diffusion for language, organized around one question: what has to change for diffusion to move from continuous images to discrete text? The answer runs from transition matrices (D3PM) to probability ratios (SEDD), to a weighted masked-language-modeling loss (MDLM / MD4), to time-independent conditionals equivalent to any-order autoregression (RADD).</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 3 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/diffusion-lm/overview/" aria-label="Diffusion Language Models: Series Overview"></a>
+        </article>
+        <article class="entry">
           <h4><span lang="en">D3PM: Diffusion Models in Discrete State Spaces</span><span lang="zh">D3PM：把扩散模型搬到离散状态空间</span></h4>
           <p class="entry-sum">Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the forward marginal and the closed-form posterior, compares uniform, absorbing ([MASK]), discretized Gaussian and embedding-based transition matrices, explains the noise schedules, the x_0-parameterization of the reverse process and the hybrid loss, and shows that BERT, autoregressive language models and generative masked language models are all special cases of discrete diffusion.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 22 min | Author: Jiaoyang Ruan</p>
