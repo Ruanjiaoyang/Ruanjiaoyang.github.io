@@ -87,10 +87,16 @@ def meta_line(p):
 
 def page(p, body_html, toc_html):
     title = html.escape(str(p.get("title", p["slug"])))
+    title_en = html.escape(str(p.get("title_en", "")))
     desc = html.escape(" ".join(str(p.get("summary_en", "")).split()))
-    toc_block = (f'<details class="toc"><summary>Table of Contents</summary>{toc_html}</details>'
+    tags = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in p.get("tags", []))
+    series = html.escape(str(p.get("series", "")))
+    order = p.get("order")
+    kicker = f"{series} · 第 {order} 篇" if series and order is not None else series
+    toc_block = (f'<details class="toc"><summary>目录 · Table of Contents</summary>{toc_html}</details>'
                  if "<li>" in toc_html else "")
-    fields = dict(title=title, desc=desc, meta=meta_line(p), toc=toc_block, body=body_html)
+    fields = dict(title=title, title_en=title_en, desc=desc, tags=tags, kicker=kicker,
+                  date=str(p.get("date", "")), toc=toc_block, body=body_html)
     out = TEMPLATE
     for k, v in fields.items():
         out = out.replace("{{" + k + "}}", v)
