@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样 · Jiaoyang Ruan</title>
+<meta name="description" content="An autoencoder compresses data but cannot generate, because nothing constrains its latent space. VAEs fix this with a probabilistic encoder and a KL regularizer. This post derives the evidence lower bound in two ways, the closed-form Gaussian KL and the reparameterization trick, explains blurriness and posterior collapse, and then covers VQ-VAE in detail: codebook, the three loss terms, the straight-through estimator, EMA updates, the learned prior, codebook collapse, VQ-VAE-2 and VQGAN, which together became the tokenizer behind latent diffusion and autoregressive image models.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">从 GAN 到 Diffusion · 第 2 篇</p>
+    <h1>从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样</h1>
+    <p class="subtitle">From AE to VAE to VQ-VAE: Making the Latent Space Samplable</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">生成模型</span><span class="tag">VAE</span><span class="tag">VQ-VAE</span><span class="tag">变分推断</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#1-ae自编码器">1. AE：自编码器</a><ul>
+<li><a href="#11-基本架构">1.1 基本架构</a></li>
+<li><a href="#12-损失函数">1.2 损失函数</a></li>
+<li><a href="#13-ae-与-pca">1.3 AE 与 PCA</a></li>
+<li><a href="#14-ae-的局限会压缩不会生成">1.4 AE 的局限：会压缩，不会生成</a></li>
+</ul>
+</li>
+<li><a href="#2-vae变分自编码器">2. VAE：变分自编码器</a><ul>
+<li><a href="#21-从生成过程出发">2.1 从生成过程出发</a></li>
+<li><a href="#22-为什么不能直接算">2.2 为什么不能直接算</a></li>
+<li><a href="#23-变分推断用编码器近似后验">2.3 变分推断：用编码器近似后验</a></li>
+<li><a href="#24-elbo-推导">2.4 ELBO 推导</a></li>
+<li><a href="#25-elbo-分解重构项与正则项">2.5 ELBO 分解：重构项与正则项</a></li>
+<li><a href="#26-编码器输出一个分布">2.6 编码器：输出一个分布</a></li>
+<li><a href="#27-重参数化技巧">2.7 重参数化技巧</a></li>
+<li><a href="#28-解码器似然的选择决定重构损失">2.8 解码器：似然的选择决定重构损失</a></li>
+<li><a href="#29-完整的训练与生成流程">2.9 完整的训练与生成流程</a></li>
+<li><a href="#210-两项损失的拉扯vae-的隐空间长什么样">2.10 两项损失的拉扯：VAE 的隐空间长什么样</a></li>
+<li><a href="#211-vae-的问题">2.11 VAE 的问题</a></li>
+</ul>
+</li>
+<li><a href="#3-vq-vae向量量化变分自编码器">3. VQ-VAE：向量量化变分自编码器</a><ul>
+<li><a href="#31-为什么要离散化">3.1 为什么要离散化</a></li>
+<li><a href="#32-结构">3.2 结构</a></li>
+<li><a href="#33-训练目标与损失函数">3.3 训练目标与损失函数</a></li>
+<li><a href="#34-直通估计straight-through-estimator">3.4 直通估计（Straight-Through Estimator）</a></li>
+<li><a href="#35-用-ema-更新码本">3.5 用 EMA 更新码本</a></li>
+<li><a href="#36-先验训练时均匀训练后另学">3.6 先验：训练时均匀，训练后另学</a></li>
+<li><a href="#37-码本坍缩">3.7 码本坍缩</a></li>
+<li><a href="#38-vq-vae-2">3.8 VQ-VAE-2</a></li>
+<li><a href="#39-vqgan-与后续发展">3.9 VQGAN 与后续发展</a></li>
+</ul>
+</li>
+<li><a href="#4-小结">4. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<p>上一篇的 GAN 走的是"不写密度，只学采样器"的路线。这一篇换一条路：<strong>写出一个带隐变量的概率模型，用变分推断去优化它的似然下界。</strong> 我们从最朴素的自编码器出发，看它为什么不能生成；再看 VAE 怎样用一个 KL 正则项修好这个问题；最后看 VQ-VAE 怎样把隐空间离散化，成为后来几乎所有视觉 tokenizer 的起点。</p>
+<p>这一篇的 ELBO 推导在下一篇 DDPM 里会原样再走一遍，所以值得仔细看。</p>
+<h2 id="1-ae自编码器">1. AE：自编码器</h2>
+<h3 id="11-基本架构">1.1 基本架构</h3>
+<p>自编码器（Auto-Encoder，AE）是一种无监督学习模型，用神经网络实现数据的压缩和重构。它由两个部分组成：</p>
+<ul>
+<li><strong>编码器（Encoder）</strong>：把输入数据 $x$ 映射到一个低维的潜在空间（latent space），得到隐表示 $z = f_\phi(x)$，$\phi$ 是编码器参数。</li>
+<li><strong>解码器（Decoder）</strong>：从隐变量 $z$ 中重构数据，得到 $\hat x = g_\theta(z)$，$\theta$ 是解码器参数。</li>
+</ul>
+<p>$z$ 的维度远小于 $x$，中间形成一个"瓶颈"。网络被迫只保留重构所必需的信息，于是学到的是数据的压缩表示。</p>
+<pre><code>  x ──▶ [ 编码器 f_φ ] ──▶ z（低维瓶颈） ──▶ [ 解码器 g_θ ] ──▶ x̂
+  例：784 维 MNIST 图像           2 到 32 维                    784 维重建图像
+</code></pre>
+<h3 id="12-损失函数">1.2 损失函数</h3>
+<p>AE 的目标是最小化输入和输出之间的重构误差，常用均方误差：</p>
+<p>$$
+\mathcal{L}_\text{AE}(\phi,\theta) = \mathbb{E}_{x}\Big[\big\| x - g_\theta\big(f_\phi(x)\big)\big\|^2\Big]
+$$</p>
+<p>如果数据是二值的（如二值化的 MNIST），也可以用逐像素的二元交叉熵。这个损失衡量的是：编码器得到的隐表示 $z$ 经过解码器还原后，和原始输入差了多少。</p>
+<h3 id="13-ae-与-pca">1.3 AE 与 PCA</h3>
+<p>线性自编码器（编码器和解码器都是线性映射、没有激活函数）在 MSE 损失下的全局最优解，恰好张成数据的前 $k$ 个主成分所在的子空间（Baldi &amp; Hornik, 1989）。也就是说，<strong>线性 AE 学到的就是 PCA</strong>，只是基向量不一定正交、不一定按方差排序。</p>
+<p>既然如此，为什么还要用 AE？因为 AE 的强大之处在于<strong>非线性</strong>。加入非线性激活函数和更多隐藏层之后，AE 可以学到弯曲的低维流形，而不只是一个线性子空间，因此能在更低的维度上保留更多信息。PCA 只能把一个瑞士卷"压扁"，而非线性 AE 有能力把它"展开"。</p>
+<h3 id="14-ae-的局限会压缩不会生成">1.4 AE 的局限：会压缩，不会生成</h3>
+<p>AE 在数据压缩、降维和特征提取上应用广泛，但有一个根本问题：<strong>它不能用来生成新样本。</strong></p>
+<p><strong>潜在空间的结构不受约束。</strong> AE 只要求"编码后能解回来"，对隐空间里的点如何分布没有任何约束。在 MNIST 上训练一个 2 维隐空间的 AE，再把所有训练样本的编码画出来，会看到：</p>
+<ul>
+<li>相同数字的编码倾向于聚在一起，形成若干个簇；</li>
+<li>簇的形状不规则，大小差别很大，有的细长，有的分散；</li>
+<li><strong>簇与簇之间有大片空白</strong>，这些区域不对应任何训练样本。</li>
+</ul>
+<p>如果在隐空间中随便采一个点送进解码器，它很可能落在空白区域。解码器从没见过这样的输入，输出往往不像任何一个数字。只有落在某个簇内部的点才能解码出合理的结果，而一旦训练数据被移除，我们甚至无法知道哪些区域是"安全"的。这就是所谓的<strong>潜在空间没有正则化</strong>。</p>
+<p><strong>过拟合会让情况更糟。</strong> 理论上，一个容量足够大的编码器可以把每个训练样本映射到实数轴上的一个独立点，解码器再把每个点精确还原，重构误差为零，但隐空间完全没有结构，相邻的点之间没有任何语义联系。</p>
+<p>所以 AE 主要用于压缩：对有效的输入，它能把数据压到更少的维度、去掉冗余；但由于隐空间没有正则化，解码器不能可靠地从随便采样的隐向量生成有效数据。要生成，我们需要一个<strong>知道该从哪里采样</strong>的隐空间：它最好是连续的（相近的点解码出相近的结果），并且是完整的（任何采样到的点都能解码出有意义的结果）。</p>
+<h2 id="2-vae变分自编码器">2. VAE：变分自编码器</h2>
+<p>VAE（Variational Auto-Encoder，Kingma &amp; Welling, 2014）的核心思想是在自编码器的基础上引入<strong>概率图模型</strong>，用<strong>变分推断</strong>来近似难以计算的后验分布。从结构上看，它和 AE 很像，但每一个部件都换成了概率版本。</p>
+<h3 id="21-从生成过程出发">2.1 从生成过程出发</h3>
+<p>VAE 首先写下一个数据的生成过程：</p>
+<p>$$
+z \sim p(z) = \mathcal{N}(0, I), \qquad x \sim p_\theta(x \mid z)
+$$</p>
+<ul>
+<li>$p(z)$ 是<strong>先验分布</strong>，通常取标准正态分布。它就是我们生成时要采样的地方，形状已知、处处连续。</li>
+<li>$p_\theta(x\mid z)$ 是<strong>似然</strong>，由解码器参数化，表示从隐变量 $z$ 生成数据 $x$ 的条件分布。</li>
+</ul>
+<p>我们的目标是最大化数据的<strong>边际似然</strong>（也叫证据，evidence）：</p>
+<p>$$
+p_\theta(x) = \int p_\theta(x\mid z)\, p(z)\, dz
+$$</p>
+<h3 id="22-为什么不能直接算">2.2 为什么不能直接算</h3>
+<p>这个积分在高维隐空间上没有闭式解。能不能用蒙特卡洛估计？</p>
+<p>$$
+p_\theta(x) \approx \frac1N\sum_{i=1}^N p_\theta(x\mid z_i), \qquad z_i\sim p(z)
+$$</p>
+<p>原则上可以，但效率极低：对于一个具体的 $x$（比如某张数字"3"的图），绝大多数从先验里随便采的 $z_i$ 会解码成别的东西，$p_\theta(x\mid z_i)$ 几乎为零。只有隐空间中极小一块区域对 $x$ 有贡献，要采到它们需要天文数字的样本。</p>
+<p>能对 $x$ 有贡献的 $z$，恰好是<strong>后验分布</strong> $p_\theta(z\mid x)$ 集中的地方。但由贝叶斯公式，</p>
+<p>$$
+p_\theta(z\mid x) = \frac{p_\theta(x\mid z)\,p(z)}{p_\theta(x)}
+$$</p>
+<p>分母正是我们算不出的 $p_\theta(x)$。于是陷入循环：要算似然需要后验，要算后验需要似然。</p>
+<h3 id="23-变分推断用编码器近似后验">2.3 变分推断：用编码器近似后验</h3>
+<p>VAE 的办法是：<strong>引入一个可学习的分布 $q_\phi(z\mid x)$ 来近似真实后验 $p_\theta(z\mid x)$。</strong> 这个 $q_\phi$ 就是编码器。</p>
+<p>注意它是一个以 $x$ 为输入的神经网络，对所有数据点共享同一组参数 $\phi$。传统的变分推断会为每个数据点单独优化一组变分参数，而 VAE 用一个网络一次性"预测"出每个数据点的近似后验，这叫<strong>摊销推断</strong>（amortized inference）。</p>
+<h3 id="24-elbo-推导">2.4 ELBO 推导</h3>
+<p><strong>推导一：从对数似然出发，拆出 KL。</strong> 由于 $\log p_\theta(x)$ 与 $z$ 无关，而 $q_\phi(z\mid x)$ 积分为 1：</p>
+<p>$$
+\begin{aligned}
+\log p_\theta(x)
+&amp;= \int q_\phi(z\mid x)\,\log p_\theta(x)\, dz \\
+&amp;= \int q_\phi(z\mid x)\,\log \frac{p_\theta(x,z)}{p_\theta(z\mid x)}\, dz \\
+&amp;= \int q_\phi(z\mid x)\,\log \Big[\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\cdot\frac{q_\phi(z\mid x)}{p_\theta(z\mid x)}\Big]\, dz \\
+&amp;= \underbrace{\mathbb{E}_{q_\phi(z|x)}\Big[\log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}\Big]}_{\text{ELBO}} + \mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x)\big)
+\end{aligned}
+$$</p>
+<p>第二行用了贝叶斯公式 $p_\theta(x) = p_\theta(x,z)/p_\theta(z\mid x)$；第三行在分式里同乘同除 $q_\phi(z\mid x)$。</p>
+<ul>
+<li><strong>第一项</strong>称为证据下界（Evidence Lower BOund，ELBO），记作 $\mathcal{L}(\theta,\phi;x)$。它只包含 $p_\theta(x,z) = p_\theta(x\mid z)p(z)$ 和 $q_\phi(z\mid x)$，都能算。</li>
+<li><strong>第二项</strong>是近似后验与真实后验之间的 KL 散度，非负，但算不出来（因为含有 $p_\theta(z\mid x)$）。</li>
+</ul>
+<p>由于 KL 散度非负，</p>
+<p>$$
+\log p_\theta(x) \;\ge\; \mathcal{L}(\theta,\phi;x) = \mathbb{E}_{q_\phi(z|x)}\Big[\log \frac{p_\theta(x,z)}{q_\phi(z\mid x)}\Big]
+$$</p>
+<p><strong>推导二：Jensen 不等式。</strong> 把 $q_\phi$ 当作重要性采样的提议分布：</p>
+<p>$$
+\log p_\theta(x) = \log \int p_\theta(x,z)\,dz = \log \mathbb{E}_{q_\phi(z|x)}\Big[\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\Big] \;\ge\; \mathbb{E}_{q_\phi(z|x)}\Big[\log\frac{p_\theta(x,z)}{q_\phi(z\mid x)}\Big]
+$$</p>
+<p>不等号来自 Jensen 不等式：$\log$ 是<strong>凹函数</strong>，所以 $\log\mathbb{E}[\cdot]\ge\mathbb{E}[\log(\cdot)]$。</p>
+<p>两种推导得到同一个下界。推导一的价值在于它精确地告诉我们<strong>下界和真实值之间差了多少</strong>：</p>
+<p>$$
+\log p_\theta(x) - \mathcal{L}(\theta,\phi;x) = \mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p_\theta(z\mid x)\big)
+$$</p>
+<p>因此最大化 ELBO 一举两得：</p>
+<ul>
+<li>对 $\theta$ 最大化，推高数据的对数似然；</li>
+<li>对 $\phi$ 最大化，由于左边的 $\log p_\theta(x)$ 与 $\phi$ 无关，等价于最小化 $\mathrm{KL}(q_\phi\|p_\theta(z\mid x))$，即让编码器逼近真实后验。</li>
+</ul>
+<p>当 $q_\phi$ 恰好等于真实后验时，下界是紧的。</p>
+<h3 id="25-elbo-分解重构项与正则项">2.5 ELBO 分解：重构项与正则项</h3>
+<p>把 $p_\theta(x,z) = p_\theta(x\mid z)\,p(z)$ 代入 ELBO：</p>
+<p>$$
+\begin{aligned}
+\mathcal{L}(\theta,\phi;x)
+&amp;= \mathbb{E}_{q_\phi(z|x)}\big[\log p_\theta(x\mid z)\big] + \mathbb{E}_{q_\phi(z|x)}\Big[\log \frac{p(z)}{q_\phi(z\mid x)}\Big] \\
+&amp;= \underbrace{\mathbb{E}_{q_\phi(z|x)}\big[\log p_\theta(x\mid z)\big]}_{\text{重构项}} - \underbrace{\mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p(z)\big)}_{\text{正则项}}
+\end{aligned}
+$$</p>
+<p>VAE 的训练损失就是负的 ELBO：</p>
+<p>$$
+\mathcal{L}_\text{VAE} = \underbrace{-\,\mathbb{E}_{q_\phi(z|x)}\big[\log p_\theta(x\mid z)\big]}_{\text{重构损失}} + \underbrace{\mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p(z)\big)}_{\text{KL 损失}}
+$$</p>
+<p>两项各有分工：</p>
+<ul>
+<li><strong>重构损失</strong>衡量解码器生成数据的质量：从编码器给出的分布里采一个 $z$，它要能被解码回原来的 $x$。具体形式取决于 $p_\theta(x\mid z)$ 的选择（见 2.8 节），常见的是均方误差或交叉熵。</li>
+<li><strong>KL 损失</strong>衡量编码器输出的分布 $q_\phi(z\mid x)$ 与先验 $p(z)$ 之间的差异。通过最小化它，模型被迫让每个样本的后验都接近标准正态分布，从而实现隐空间的<strong>正则化</strong>。</li>
+</ul>
+<p>注意这里的 KL 是对<strong>先验</strong> $p(z)$ 的，可以算；2.4 节里那个算不出的 KL 是对<strong>真实后验</strong> $p_\theta(z\mid x)$ 的。两者不要混淆。</p>
+<h3 id="26-编码器输出一个分布">2.6 编码器：输出一个分布</h3>
+<p>和 AE 不同，VAE 的编码器不输出一个确定的隐向量，而是输出一个<strong>分布的参数</strong>。通常取对角协方差的高斯：</p>
+<p>$$
+q_\phi(z\mid x) = \mathcal{N}\big(z;\; \mu_\phi(x),\; \mathrm{diag}\big(\sigma^2_\phi(x)\big)\big)
+$$</p>
+<p>编码器网络有两个输出头，一个输出均值 $\mu_\phi(x)$，一个输出方差。实践中通常输出 $\log\sigma^2$ 而不是 $\sigma$，以保证方差为正、数值稳定。</p>
+<p>这样每个输入不再对应隐空间里的一个点，而是一小团"云"。相近的输入的云会彼此重叠，解码器必须对一整片区域都给出合理的输出，隐空间因此变得<strong>连续</strong>。</p>
+<p>在高斯假设下，KL 损失有闭式解。对单个维度：</p>
+<p>$$
+\begin{aligned}
+\mathrm{KL}\big(\mathcal{N}(\mu,\sigma^2)\,\|\,\mathcal{N}(0,1)\big)
+&amp;= \mathbb{E}_{z\sim\mathcal{N}(\mu,\sigma^2)}\Big[\log\mathcal{N}(z;\mu,\sigma^2) - \log\mathcal{N}(z;0,1)\Big] \\
+&amp;= \mathbb{E}\Big[-\tfrac12\log\sigma^2 - \tfrac{(z-\mu)^2}{2\sigma^2} + \tfrac{z^2}{2}\Big] \\
+&amp;= -\tfrac12\log\sigma^2 - \tfrac12 + \tfrac12\big(\mu^2+\sigma^2\big)
+\end{aligned}
+$$</p>
+<p>最后一步用了 $\mathbb{E}[(z-\mu)^2]=\sigma^2$ 和 $\mathbb{E}[z^2]=\mu^2+\sigma^2$（两个 $\log\sqrt{2\pi}$ 抵消）。对 $d$ 维对角高斯，各维独立相加：</p>
+<p>$$
+\mathrm{KL}\big(q_\phi(z\mid x)\,\|\,\mathcal{N}(0,I)\big) = \frac12\sum_{j=1}^d \Big(\mu_j^2 + \sigma_j^2 - \log\sigma_j^2 - 1\Big)
+$$</p>
+<p>这个式子很好理解：$\mu_j^2$ 惩罚均值偏离原点，$\sigma_j^2 - \log\sigma_j^2 - 1$ 在 $\sigma_j=1$ 时取最小值 0，惩罚方差偏离 1。两者合起来把每朵"云"都往标准高斯的位置和大小上拉。</p>
+<h3 id="27-重参数化技巧">2.7 重参数化技巧</h3>
+<p>重构项 $\mathbb{E}_{q_\phi(z|x)}[\log p_\theta(x\mid z)]$ 需要从 $q_\phi$ 中采样 $z$，然后对 $\phi$ 求梯度。问题是"采样"这个操作本身不可导：梯度无法穿过一个随机数生成器传回 $\mu_\phi$ 和 $\sigma_\phi$。</p>
+<p><strong>一种办法是得分函数估计</strong>（score function estimator，也叫 REINFORCE）：</p>
+<p>$$
+\nabla_\phi\,\mathbb{E}_{q_\phi(z)}\big[f(z)\big] = \mathbb{E}_{q_\phi(z)}\big[f(z)\,\nabla_\phi\log q_\phi(z)\big]
+$$</p>
+<p>它对任何分布都适用，但方差很大，训练很不稳定。（强化学习里的策略梯度用的就是它，所以 RL 才需要基线、优势函数等一系列降方差的手段。）</p>
+<p><strong>VAE 用的是重参数化技巧</strong>：把随机性挪到一个与参数无关的变量上，</p>
+<p>$$
+z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I)
+$$</p>
+<p>$\odot$ 是逐元素乘法。这样采样过程被分解为<strong>确定性部分</strong>（$\mu$ 和 $\sigma$，依赖参数）和<strong>随机部分</strong>（$\epsilon$，不依赖参数）。期望可以改写为对 $\epsilon$ 的期望：</p>
+<p>$$
+\nabla_\phi\,\mathbb{E}_{q_\phi(z|x)}\big[f(z)\big] = \mathbb{E}_{\epsilon\sim\mathcal{N}(0,I)}\Big[\nabla_\phi f\big(\mu_\phi(x)+\sigma_\phi(x)\odot\epsilon\big)\Big]
+$$</p>
+<p>梯度可以沿着 $z\to\mu,\sigma\to\phi$ 正常反向传播，而且方差比得分函数估计小得多。实践中每个样本只采一个 $\epsilon$ 就足够了。</p>
+<pre><code>            确定性路径（可导）                 随机路径（不需要求导）
+x ──▶ [编码器] ──▶ μ, log σ² ──┐
+                               ├──▶ z = μ + σ ⊙ ε ──▶ [解码器] ──▶ x̂
+               ε ~ N(0, I) ────┘
+</code></pre>
+<p>这个技巧会在扩散模型里再次出现：DDPM 的前向加噪 $x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1-\bar\alpha_t}\,\epsilon$ 就是同一个写法。</p>
+<h3 id="28-解码器似然的选择决定重构损失">2.8 解码器：似然的选择决定重构损失</h3>
+<p>解码器接收采样得到的 $z$，输出 $p_\theta(x\mid z)$ 的参数。重构损失的具体形式由这个分布的选择决定：</p>
+<p><strong>高斯似然。</strong> 取 $p_\theta(x\mid z) = \mathcal{N}\big(x;\,\mu_\theta(z),\,\sigma_x^2 I\big)$，$\sigma_x$ 固定，则</p>
+<p>$$
+-\log p_\theta(x\mid z) = \frac{1}{2\sigma_x^2}\big\|x - \mu_\theta(z)\big\|^2 + \text{常数}
+$$</p>
+<p>即<strong>加权的均方误差</strong>。这里有一个容易忽略的细节：$\sigma_x$ 的取值决定了重构项和 KL 项的相对权重。$\sigma_x$ 越小，重构项权重越大。很多实现直接用 MSE 而不写 $\frac{1}{2\sigma_x^2}$，相当于隐式地选了某个 $\sigma_x$，这和下面 $\beta$-VAE 调 KL 权重是同一件事。</p>
+<p><strong>伯努利似然。</strong> 对于像素值在 $[0,1]$ 的图像，取每个像素独立的伯努利分布，解码器输出概率 $\hat x_i$，则</p>
+<p>$$
+-\log p_\theta(x\mid z) = -\sum_i\Big[x_i\log\hat x_i + (1-x_i)\log(1-\hat x_i)\Big]
+$$</p>
+<p>即<strong>二元交叉熵</strong>。</p>
+<h3 id="29-完整的训练与生成流程">2.9 完整的训练与生成流程</h3>
+<p><strong>训练</strong>（每个 batch）：</p>
+<ol>
+<li>编码器读入 $x$，输出 $\mu_\phi(x)$ 和 $\log\sigma^2_\phi(x)$；</li>
+<li>采样 $\epsilon\sim\mathcal{N}(0,I)$，计算 $z = \mu + \sigma\odot\epsilon$；</li>
+<li>解码器读入 $z$，输出重建 $\hat x$；</li>
+<li>计算重构损失与 KL 损失之和，反向传播，同时更新 $\phi$ 和 $\theta$。</li>
+</ol>
+<pre><code class="language-python">def vae_loss(x, encoder, decoder):
+    mu, logvar = encoder(x)
+    eps = torch.randn_like(mu)
+    z = mu + torch.exp(0.5 * logvar) * eps            # 重参数化
+    x_hat = decoder(z)
+    recon = F.mse_loss(x_hat, x, reduction=&quot;sum&quot;)      # 或 BCE
+    kl = 0.5 * torch.sum(mu.pow(2) + logvar.exp() - logvar - 1)
+    return (recon + kl) / x.size(0)
+</code></pre>
+<p><strong>生成</strong>：扔掉编码器，直接从先验采样 $z\sim\mathcal{N}(0,I)$，送进解码器即可。这正是 AE 做不到的事：因为 KL 项把所有样本的后验都推向了标准高斯，所以先验中的任何一个点附近都"有人负责"。</p>
+<h3 id="210-两项损失的拉扯vae-的隐空间长什么样">2.10 两项损失的拉扯：VAE 的隐空间长什么样</h3>
+<p>两项损失的目标是相互矛盾的：</p>
+<ul>
+<li>只有重构损失时，VAE 会退化成 AE：编码器把方差压到接近 0，每个样本占据一个孤立的点，隐空间重新出现空洞。</li>
+<li>只有 KL 损失时，所有样本的后验都变成同一个标准高斯，隐空间被完美地"铺满"了，但 $z$ 不携带任何关于 $x$ 的信息，解码器只能输出一个平均图像。</li>
+</ul>
+<p>训练过程在两者之间找平衡。在 MNIST 上训练一个 2 维隐空间的 VAE，把编码画出来，会看到和 AE 很不一样的图景：</p>
+<ul>
+<li>整体分布接近一个以原点为中心的单位圆形高斯；</li>
+<li>相同数字仍然聚在一起，但簇与簇之间<strong>没有明显的空隙</strong>，相似的数字（比如 4 和 9）的簇在边界上有重叠；</li>
+<li>在隐空间中沿直线移动，解码结果会从一个数字平滑地过渡到另一个数字。</li>
+</ul>
+<p>这正是我们想要的：一个<strong>连续</strong>且<strong>完整</strong>的隐空间。</p>
+<h3 id="211-vae-的问题">2.11 VAE 的问题</h3>
+<p><strong>生成结果偏模糊。</strong> 这是 VAE 最常被诟病的一点。一种解释正是上面的拉扯：KL 项让相近样本的后验重叠，同一个 $z$ 附近混入了多个不同样本的信息。在高斯似然（MSE）下，解码器对这些样本的最优输出是它们的<strong>平均</strong>，而多张图像的平均就是一张模糊的图。另一种解释是对角高斯后验的表达能力有限，无法刻画真实后验的复杂形状，ELBO 与真实似然之间的差距较大。</p>
+<p><strong>后验坍缩（posterior collapse）。</strong> 当解码器足够强大时（例如用自回归的 PixelCNN 或 LSTM 作解码器），它不依赖 $z$ 也能把 $x$ 建模得很好。此时最省事的解法是让 $q_\phi(z\mid x) = p(z)$，KL 项直接降到 0，$z$ 被完全忽略。常见的缓解办法：</p>
+<ul>
+<li><strong>KL 退火</strong>（KL annealing）：训练初期把 KL 项的权重从 0 逐渐增加到 1，先让编码器学会传递信息；</li>
+<li><strong>Free bits</strong>：对每个隐变量维度，KL 低于某个阈值 $\lambda$ 时不再惩罚，即用 $\max(\lambda,\mathrm{KL}_j)$ 代替 $\mathrm{KL}_j$；</li>
+<li>削弱解码器，迫使它依赖 $z$。</li>
+</ul>
+<p><strong>$\beta$-VAE。</strong> 给 KL 项加一个权重：</p>
+<p>$$
+\mathcal{L}_\beta = -\,\mathbb{E}_{q_\phi(z|x)}\big[\log p_\theta(x\mid z)\big] + \beta\,\mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p(z)\big)
+$$</p>
+<p>$\beta&gt;1$ 时，隐空间更规整，各个维度倾向于编码相互独立的因素（比如一维控制旋转、一维控制大小），称为<strong>解耦表示</strong>，代价是重构更模糊；$\beta&lt;1$ 时重构更清晰，但隐空间更不规整。后面会看到，Stable Diffusion 的自编码器用的就是一个 $\beta$ 极小的 VAE。</p>
+<p><strong>其他扩展</strong>（简要）：条件 VAE（CVAE）给编码器和解码器都输入条件 $y$；分层 VAE（如 NVAE）使用多层隐变量，大幅提升了生成质量；IWAE 用多个样本做重要性加权，得到更紧的下界。分层 VAE 的思路值得记住，下一篇的 DDPM 就是一个特殊的分层 VAE。</p>
+<h2 id="3-vq-vae向量量化变分自编码器">3. VQ-VAE：向量量化变分自编码器</h2>
+<p>VQ-VAE（Vector Quantized VAE）由 DeepMind 在 2017 年提出（van den Oord et al., 2017），是一种结合离散表示学习和自编码器结构的生成模型，用于高质量图像、语音和视频的生成。它的核心创新是用一个**离散码本（codebook）**来表示隐变量。</p>
+<h3 id="31-为什么要离散化">3.1 为什么要离散化</h3>
+<p>和 VAE 相比，VQ-VAE 有两个关键区别：</p>
+<ul>
+<li>VAE 用连续的高斯分布建模隐变量；VQ-VAE 通过<strong>向量量化</strong>把隐变量映射到一个有限的离散码本上，类似 K-means 聚类中把每个点分配给最近的中心。</li>
+<li>VAE 的先验是固定的标准高斯；VQ-VAE 的先验是<strong>另外学出来的</strong>，可以很复杂。</li>
+</ul>
+<p>离散化的动机有几层：</p>
+<ol>
+<li><strong>很多数据本身就是离散的</strong>：语言由词组成，语音由音素组成，图像也可以用"物体、部件、纹理"这样的离散概念来描述。</li>
+<li><strong>绕开后验坍缩</strong>：VQ-VAE 的 KL 项是常数（见 3.6 节），不存在"KL 降到 0、编码器被忽略"的问题，因此可以和强大的自回归解码器或先验配合使用。</li>
+<li><strong>离散 token 可以直接用序列模型建模</strong>：图像被表示成一串 token 之后，可以用 PixelCNN、Transformer 这类在离散序列上非常成熟的模型去学它的分布。这一点后来被证明影响深远。</li>
+</ol>
+<h3 id="32-结构">3.2 结构</h3>
+<p>VQ-VAE 包含<strong>编码器、向量量化模块、解码器</strong>三部分。</p>
+<p><strong>(1) 编码器。</strong> 输入 $x$ 经过编码器 $E$ 得到一个连续的隐表示：</p>
+<p>$$
+z_e(x) = E(x)
+$$</p>
+<p>对图像来说，$z_e(x)$ 是一张 $h\times w\times d$ 的特征图，例如把 $256\times256$ 的图像下采样 8 倍，得到 $32\times32$ 个位置，每个位置一个 $d$ 维向量。此时 $z_e(x)$ 仍然是连续的。</p>
+<p><strong>(2) 向量量化。</strong> 引入一个离散码本</p>
+<p>$$
+\mathcal{E} = \{e_1, e_2, \dots, e_K\}, \qquad e_j\in\mathbb{R}^d
+$$</p>
+<p>$K$ 是码本大小（比如 512 或 8192），每个码字 $e_j$ 是一个可学习的向量。对特征图上的每个位置，找到欧氏距离最近的码字，用它替换原来的向量：</p>
+<p>$$
+z_q(x) = e_k, \qquad k = \arg\min_j \big\| z_e(x) - e_j \big\|_2
+$$</p>
+<p>这一步和 K-means 中把样本分配给最近的聚类中心完全一样。量化之后，一张图像就被表示成一张 $h\times w$ 的<strong>整数索引图</strong>，每个位置是 $\{1,\dots,K\}$ 中的一个 token。</p>
+<p><strong>(3) 解码器。</strong> 量化后的 $z_q(x)$ 送入解码器，重建输入数据：</p>
+<p>$$
+\hat x = D\big(z_q(x)\big)
+$$</p>
+<p>整体流程：</p>
+<pre><code>x ──▶ [编码器 E] ──▶ z_e(x) ∈ R^{h×w×d}
+                        │  逐位置查找最近码字
+                        ▼
+                  索引图 k ∈ {1..K}^{h×w}  ◀── 这就是&quot;离散 token&quot;
+                        │  查表
+                        ▼
+                  z_q(x) ∈ R^{h×w×d} ──▶ [解码器 D] ──▶ x̂
+</code></pre>
+<h3 id="33-训练目标与损失函数">3.3 训练目标与损失函数</h3>
+<p>VQ-VAE 的训练损失由三部分组成：</p>
+<p>$$
+\mathcal{L} = \underbrace{\big\|x - D\big(z_q(x)\big)\big\|^2}_{\mathcal{L}_\text{recon}} + \underbrace{\big\|\mathrm{sg}\big[z_e(x)\big] - e_k\big\|^2}_{\mathcal{L}_\text{codebook}} + \beta\,\underbrace{\big\|z_e(x) - \mathrm{sg}\big[e_k\big]\big\|^2}_{\mathcal{L}_\text{commit}}
+$$</p>
+<p>其中 $\mathrm{sg}[\cdot]$ 表示<strong>停止梯度</strong>（stop-gradient）：前向传播时它是恒等映射，反向传播时它的梯度为零。</p>
+<p><strong>(1) 重构损失 $\mathcal{L}_\text{recon}$。</strong> 确保解码器能从量化后的隐变量恢复原始数据。它更新解码器，并通过下面的直通估计更新编码器；但它<strong>不会更新码本</strong>，因为 $\arg\min$ 那一步把码本和梯度隔开了。</p>
+<p><strong>(2) 码本损失 $\mathcal{L}_\text{codebook}$。</strong> 码本需要单独的训练信号。这一项把选中的码字 $e_k$ 拉向编码器的输出 $z_e(x)$。由于对 $z_e$ 加了停止梯度，它<strong>只更新码本</strong>，不影响编码器。这和 K-means 中"把聚类中心移到分配给它的点的中心"是一回事。</p>
+<p><strong>(3) 承诺损失 $\mathcal{L}_\text{commit}$。</strong> 反过来，把编码器的输出 $z_e(x)$ 拉向它选中的码字。由于对 $e_k$ 加了停止梯度，它<strong>只更新编码器</strong>。为什么需要这一项？隐空间的维度是无界的，如果编码器的输出可以随意增长，而码本的学习速度跟不上，编码器输出就会越漂越远，在不同码字之间来回跳，训练不稳定。承诺损失让编码器"承诺"使用码本，不要跑远。$\beta$ 是控制其强度的超参数，原文发现结果对它不敏感，取 0.25。</p>
+<p>为什么要把"码本靠近编码器"和"编码器靠近码本"拆成两项，而不是直接写一个 $\|z_e(x)-e_k\|^2$？因为这样可以给两个方向不同的权重：码本应当积极地追随编码器，编码器只需轻微地约束自己。</p>
+<h3 id="34-直通估计straight-through-estimator">3.4 直通估计（Straight-Through Estimator）</h3>
+<p>量化过程包含一个最近邻查找（$\arg\min$），它是不可导的：$z_q$ 关于 $z_e$ 的梯度几乎处处为零。重构损失的梯度到了 $z_q$ 就传不下去了，编码器得不到训练。</p>
+<p>VQ-VAE 用<strong>直通估计</strong>来近似：</p>
+<ul>
+<li><strong>前向传播</strong>时，编码器输出 $z_e(x)$ 被最近的码字 $e_k$ 替换，解码器看到的是 $z_q(x)$；</li>
+<li><strong>反向传播</strong>时，假装量化这一步是恒等映射，把 $z_q$ 处的梯度原封不动地复制给 $z_e$：</li>
+</ul>
+<p>$$
+\frac{\partial \mathcal{L}}{\partial z_e(x)} \approx \frac{\partial \mathcal{L}}{\partial z_q(x)}
+$$</p>
+<p>代码里通常一行实现：</p>
+<pre><code class="language-python">z_q = z_e + (z_q - z_e).detach()
+</code></pre>
+<p>前向时括号内外的 $z_e$ 抵消，结果就是 $z_q$；反向时 <code>.detach()</code> 的部分没有梯度，梯度全部流向 $z_e$。</p>
+<p>为什么这种近似是合理的？因为承诺损失保证了 $z_e$ 和 $z_q$ 离得很近，在 $z_q$ 处计算的梯度对 $z_e$ 来说也是一个不错的方向。直观上，解码器的梯度告诉编码器"往哪个方向改能让重建更好"，下一次前向时，编码器的输出移动后可能就被分配到另一个更合适的码字上。</p>
+<p>把三项损失和直通估计合起来，各个参数的梯度来源是：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>从哪些损失获得梯度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>解码器</td>
+<td>重构损失</td>
+</tr>
+<tr>
+<td>编码器</td>
+<td>重构损失（经直通估计）+ 承诺损失</td>
+</tr>
+<tr>
+<td>码本</td>
+<td>码本损失</td>
+</tr>
+</tbody>
+</table>
+<h3 id="35-用-ema-更新码本">3.5 用 EMA 更新码本</h3>
+<p>原文还提出了码本损失的一个替代方案：用<strong>指数移动平均</strong>（EMA）直接更新码本，不再通过梯度下降。对第 $i$ 个码字，记当前 batch 中分配给它的编码器输出为 $\{z_{i,1},\dots,z_{i,n_i}\}$，则</p>
+<p>$$
+N_i \leftarrow \gamma N_i + (1-\gamma)\,n_i, \qquad
+m_i \leftarrow \gamma m_i + (1-\gamma)\sum_{j=1}^{n_i} z_{i,j}, \qquad
+e_i \leftarrow \frac{m_i}{N_i}
+$$</p>
+<p>衰减系数 $\gamma$ 通常取 0.99。这就是在线版本的 K-means：码字等于分配给它的所有向量的（滑动）平均。EMA 更新收敛更快、更稳定，是后来多数实现的默认选择。</p>
+<h3 id="36-先验训练时均匀训练后另学">3.6 先验：训练时均匀，训练后另学</h3>
+<p>VQ-VAE 的名字里有"VAE"，那它的 ELBO 在哪里？</p>
+<p>把编码器看成一个确定性的 one-hot 后验：$q(z=k\mid x) = 1$ 当 $k$ 是最近码字，否则为 0。训练时假设先验是 $K$ 个码字上的<strong>均匀分布</strong> $p(z=k)=1/K$，则</p>
+<p>$$
+\mathrm{KL}\big(q(z\mid x)\,\|\,p(z)\big) = \sum_k q(z=k\mid x)\log\frac{q(z=k\mid x)}{1/K} = 1\cdot\log\frac{1}{1/K} = \log K
+$$</p>
+<p>是一个常数，对训练没有影响，可以从损失中省略。所以 VQ-VAE 的训练目标只剩下重构项（加上为量化服务的两个辅助项）。</p>
+<p>但均匀先验显然不是真实的 token 分布：不同 token 的出现频率不同，相邻位置的 token 之间也有很强的依赖。所以生成分两个阶段：</p>
+<ol>
+<li><strong>第一阶段</strong>：训练 VQ-VAE（编码器、码本、解码器），得到把图像变成 token 图、再变回图像的能力。</li>
+<li><strong>第二阶段</strong>：冻结 VQ-VAE，把训练集的所有图像都编码成 token 图，然后<strong>单独训练一个自回归模型</strong>去拟合 token 的联合分布 $p(k_1,k_2,\dots,k_{hw})$。原文用的是 PixelCNN，后来普遍换成 Transformer。</li>
+</ol>
+<p>生成时：用自回归先验逐个采样出一张 token 图，查码本得到 $z_q$，再用解码器还原成图像。</p>
+<p>这个两阶段范式的好处在于分工：VQ-VAE 负责把高维、冗余的像素压缩成短得多的 token 序列，并处理局部细节；先验模型只需要在这个紧凑的离散空间里建模全局结构，计算量大幅降低。</p>
+<h3 id="37-码本坍缩">3.7 码本坍缩</h3>
+<p>VQ-VAE 训练中一个常见的问题是<strong>码本利用率低</strong>：$K$ 个码字里只有一小部分被用到，其余的码字从未被选中过，也就从未得到更新，成为"死码"（dead codes）。这和 K-means 初始化不好时有的中心永远分配不到点是一回事。</p>
+<p>常见的解决办法：</p>
+<ul>
+<li>用 K-means 在第一批编码器输出上初始化码本；</li>
+<li>定期把长期未使用的码字重新初始化为当前 batch 里的随机编码器输出；</li>
+<li>在低维空间里做查找：先把 $z_e$ 投影到很低的维度（如 8 维或 32 维）再量化，并对向量做 L2 归一化（ViT-VQGAN），用余弦相似度代替欧氏距离；</li>
+<li>干脆不学码本：FSQ（Finite Scalar Quantization）把每一维直接四舍五入到几个固定取值，码本是这些取值的笛卡尔积；LFQ（Lookup-Free Quantization，MAGVIT-v2）把每一维量化为 $\pm1$。这两种方法都不需要码本损失和承诺损失，码本利用率接近 100%。</li>
+</ul>
+<h3 id="38-vq-vae-2">3.8 VQ-VAE-2</h3>
+<p>DeepMind 在 2019 年提出 VQ-VAE-2（Razavi et al., 2019），用于生成高分辨率图像（如 ImageNet $256\times256$、FFHQ $1024\times1024$）。</p>
+<ul>
+<li><strong>层级结构</strong>：在 VQ-VAE 基础上使用多层级的隐变量，像金字塔一样。以 $256\times256$ 图像为例，顶层是一张 $32\times32$ 的 token 图，捕捉全局信息（如物体形状、场景布局）；底层是一张 $64\times64$ 的 token 图，以顶层为条件，捕捉细节信息（如纹理）。</li>
+<li><strong>层级先验</strong>：顶层先验用带自注意力的 PixelCNN 建模全局依赖，底层先验以顶层 token 为条件。</li>
+<li><strong>拒绝采样</strong>：用一个预训练分类器对生成结果打分，丢弃得分低的样本，以多样性换质量。</li>
+</ul>
+<p>VQ-VAE-2 生成的样本在质量上接近当时的 BigGAN，同时多样性更好，没有 GAN 常见的模式崩溃。</p>
+<h3 id="39-vqgan-与后续发展">3.9 VQGAN 与后续发展</h3>
+<p>VQ-VAE 的重建仍然偏模糊，因为重构损失是 MSE。VQGAN（Esser et al., 2021）在此基础上做了三处改动：</p>
+<ul>
+<li>把 MSE 换成 L1 损失加<strong>感知损失</strong>（LPIPS：在预训练网络的特征空间里比较）；</li>
+<li>加入一个 <strong>PatchGAN 判别器</strong>，用对抗损失让重建图像具有真实的高频纹理（这就是第 1 篇最后提到的"对抗损失作为组件"）；</li>
+<li>自适应地平衡重构损失和对抗损失的权重：</li>
+</ul>
+<p>$$
+\lambda = \frac{\big\|\nabla_{G_L}\mathcal{L}_\text{rec}\big\|}{\big\|\nabla_{G_L}\mathcal{L}_\text{GAN}\big\| + \delta}
+$$</p>
+<p>其中 $\nabla_{G_L}$ 表示对解码器最后一层参数的梯度，$\delta$ 是一个很小的数。这样两种损失对解码器的"拉力"大致相当。</p>
+<p>在此基础上，VQGAN 把第二阶段的先验换成了 Transformer。由于 token 序列很短（如 $16\times16=256$ 个），Transformer 可以在其上建模全局结构，生成百万像素级别的图像。</p>
+<p>"<strong>先学一个 tokenizer，再在 token 上建模</strong>"这个范式后来成为了主流：</p>
+<ul>
+<li><strong>自回归文生图</strong>：DALL·E（第一代）用 dVAE（用 Gumbel-Softmax 松弛代替直通估计的离散 VAE）得到图像 token，再和文本 token 拼接，交给一个 Transformer 自回归建模；Parti 用 ViT-VQGAN 做 tokenizer。</li>
+<li><strong>掩码生成</strong>：MaskGIT、MUSE 在 VQ token 上做类似 BERT 的掩码预测，并行生成多个 token。</li>
+<li><strong>Latent Diffusion（Stable Diffusion）</strong>：在自编码器的隐空间里做扩散，而不是在像素空间。论文同时试了两种正则化：一种是 VQ 正则，一种是 KL 正则（即权重极小的 VAE，KL 权重约 $10^{-6}$，只是防止隐空间方差无限增大）。Stable Diffusion 实际用的是后者，下采样 8 倍、4 个通道。这个自编码器同样用了感知损失和 PatchGAN 对抗损失。</li>
+<li><strong>多模态大模型</strong>：统一理解与生成的多模态模型中，视觉 tokenizer 也基本沿用 VQ 系列的思路，图像 token 与文本 token 共享同一个词表和同一个 Transformer。</li>
+</ul>
+<h2 id="4-小结">4. 小结</h2>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>隐变量</th>
+<th>先验</th>
+<th>损失</th>
+<th>能否生成</th>
+<th>主要问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AE</td>
+<td>连续、确定的点</td>
+<td>无</td>
+<td>重构误差</td>
+<td>否</td>
+<td>隐空间不规则、有空洞</td>
+</tr>
+<tr>
+<td>VAE</td>
+<td>连续、高斯分布</td>
+<td>固定的 $\mathcal{N}(0,I)$</td>
+<td>重构 + KL（负 ELBO）</td>
+<td>能，一步采样</td>
+<td>生成模糊、后验坍缩</td>
+</tr>
+<tr>
+<td>VQ-VAE</td>
+<td>离散码本索引</td>
+<td>另训的自回归模型</td>
+<td>重构 + 码本 + 承诺</td>
+<td>能，两阶段</td>
+<td>码本利用率、重建偏糊（VQGAN 改进）</td>
+</tr>
+</tbody>
+</table>
+<p>几条贯穿后续文章的线索：</p>
+<ul>
+<li><strong>ELBO</strong>：$\log p(x)\ge\mathbb{E}_q[\log p(x,z)/q(z\mid x)]$，下界与真实值的差距是近似后验与真实后验的 KL。下一篇的 DDPM 会对一条长长的隐变量链 $x_1,\dots,x_T$ 写出完全相同的下界。</li>
+<li><strong>重参数化</strong>：$z = \mu + \sigma\epsilon$。DDPM 的前向加噪、训练目标都建立在这个写法上。</li>
+<li><strong>在隐空间里做生成</strong>：VQ-VAE 与 VQGAN 开创的"tokenizer + 生成模型"两阶段范式，被 Latent Diffusion 继承，成为今天文生图的标准架构。</li>
+</ul>
+<p>下一篇的 DDPM 可以看成一个<strong>层数很多、每层隐变量都和数据同维、编码器固定不学</strong>的分层 VAE。我们会看到，固定编码器这个看似"限制"的选择，恰恰让 ELBO 化简成了一个极其简单的噪声回归问题。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Baldi &amp; Hornik. <em>Neural Networks and Principal Component Analysis: Learning from Examples Without Local Minima.</em> Neural Networks 1989.</li>
+<li>Kingma &amp; Welling. <em>Auto-Encoding Variational Bayes.</em> ICLR 2014.</li>
+<li>Rezende, Mohamed &amp; Wierstra. <em>Stochastic Backpropagation and Approximate Inference in Deep Generative Models.</em> ICML 2014.</li>
+<li>Bowman et al. <em>Generating Sentences from a Continuous Space.</em> CoNLL 2016.（KL 退火与后验坍缩）</li>
+<li>Burda, Grosse &amp; Salakhutdinov. <em>Importance Weighted Autoencoders.</em> ICLR 2016.</li>
+<li>Kingma et al. <em>Improved Variational Inference with Inverse Autoregressive Flow.</em> NeurIPS 2016.（free bits）</li>
+<li>Higgins et al. <em>β-VAE: Learning Basic Visual Concepts with a Constrained Variational Framework.</em> ICLR 2017.</li>
+<li>van den Oord, Vinyals &amp; Kavukcuoglu. <em>Neural Discrete Representation Learning.</em> NeurIPS 2017.</li>
+<li>Razavi, van den Oord &amp; Vinyals. <em>Generating Diverse High-Fidelity Images with VQ-VAE-2.</em> NeurIPS 2019.</li>
+<li>Vahdat &amp; Kautz. <em>NVAE: A Deep Hierarchical Variational Autoencoder.</em> NeurIPS 2020.</li>
+<li>Esser, Rombach &amp; Ommer. <em>Taming Transformers for High-Resolution Image Synthesis.</em> CVPR 2021.（VQGAN）</li>
+<li>Ramesh et al. <em>Zero-Shot Text-to-Image Generation.</em> ICML 2021.（DALL·E）</li>
+<li>Rombach et al. <em>High-Resolution Image Synthesis with Latent Diffusion Models.</em> CVPR 2022.</li>
+<li>Yu et al. <em>Vector-quantized Image Modeling with Improved VQGAN.</em> ICLR 2022.（ViT-VQGAN）</li>
+<li>Chang et al. <em>MaskGIT: Masked Generative Image Transformer.</em> CVPR 2022.</li>
+<li>Mentzer et al. <em>Finite Scalar Quantization: VQ-VAE Made Simple.</em> ICLR 2024.</li>
+<li>Yu et al. <em>Language Model Beats Diffusion: Tokenizer is Key to Visual Generation.</em> ICLR 2024.（MAGVIT-v2，LFQ）</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>

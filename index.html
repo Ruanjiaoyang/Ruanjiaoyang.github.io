@@ -348,6 +348,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- BLOG:START -->
       <div class="entries">
         <article class="entry">
+          <h3><span lang="en">From AE to VAE to VQ-VAE: Making the Latent Space Samplable</span><span lang="zh">从 AE 到 VAE 再到 VQ-VAE：让隐空间可以采样</span></h3>
+          <p class="entry-sum">An autoencoder compresses data but cannot generate, because nothing constrains its latent space. VAEs fix this with a probabilistic encoder and a KL regularizer. This post derives the evidence lower bound in two ways, the closed-form Gaussian KL and the reparameterization trick, explains blurriness and posterior collapse, and then covers VQ-VAE in detail: codebook, the three loss terms, the straight-through estimator, EMA updates, the learned prior, codebook collapse, VQ-VAE-2 and VQGAN, which together became the tokenizer behind latent diffusion and autoregressive image models.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 25 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/vae/" aria-label="From AE to VAE to VQ-VAE: Making the Latent Space Samplable"></a>
+        </article>
+        <article class="entry">
           <h3><span lang="en">GAN: Learning a Distribution Through a Two-Player Game</span><span lang="zh">GAN：用一场博弈学习数据分布</span></h3>
           <p class="entry-sum">GANs learn to sample from a data distribution without ever writing down its density. This post covers the generator and discriminator, derives the minimax objective, the optimal discriminator and the Jensen–Shannon connection, explains the non-saturating loss, walks through architecture and training, and analyzes vanishing gradients, mode collapse and unstable dynamics, followed by the main extensions (DCGAN, WGAN/WGAN-GP, LSGAN, SNGAN, CGAN, Pix2Pix, CycleGAN, StyleGAN, BigGAN) and applications.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 23 min | Author: Jiaoyang Ruan</p>
