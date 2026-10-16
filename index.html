@@ -497,7 +497,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Reinforcement Learning for LLMs</span><span lang="zh">LLM 强化学习</span></h3>
-          <span class="series-count"><span lang="en">4 posts</span><span lang="zh">4 篇</span></span></summary>
+          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Foundations of RL for LLMs: Policy Gradients, KL Regularization, RLHF and RLVR</span><span lang="zh">LLM 强化学习基础：从策略梯度、KL 约束到 RLHF 与 RLVR</span></h4>
@@ -522,6 +522,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">GRPO as introduced in DeepSeekMath and scaled in DeepSeek-R1: group sampling, group-normalized advantages, the KL term moved into the loss, and the R1-Zero and R1 recipes. It places GRPO in the critic-free family (REINFORCE, RLOO, ReMax, REINFORCE++), works through the known biases (length normalization, standard-deviation scaling, zero-variance groups, token versus sequence importance ratios), and covers the variants that fix them: DAPO, Dr.GRPO, GSPO, CISPO, LitePPO and common &quot;GRPO+&quot; tricks. The second half covers the open debates: does RLVR expand reasoning or only sharpen sampling (pass@k), entropy collapse and its covariance mechanism, response-length growth, spurious rewards and one-shot RLVR, and the training-inference mismatch that destabilizes large runs, especially for MoE models. It ends with the tasks GRPO fits. Group advantages and the entropy mechanism come with tested NumPy code.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 32 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/rl/grpo/" aria-label="The GRPO Line: Group-Relative Advantages, RLVR, and the Debates They Started"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Choosing and Applying RL for LLMs: Reward Design, Method Selection and Pitfalls by Task Type</span><span lang="zh">选型与落地：按任务类型设计奖励、选择方法、避开陷阱</span></h4>
+          <p class="entry-sum">The closing post of the series turns the PPO, DPO and GRPO lines into decisions. It starts from three questions (is there a reliable automatic reward, can you sample online, how long are the trajectories), gives general principles for reward design, and then walks through six task types: general assistant alignment, math and code reasoning, tool use and long-horizon agents, classification and extraction tasks with structured outputs, safety and refusals, and style or personalization from user feedback. For each it covers how to build the reward, which method fits, and what tends to go wrong. It closes with common pipeline templates, a selection table, and a checklist of pitfalls. A tested example shows a format-gated F1 reward and pass-rate filtering.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 17 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/rl/choosing-and-applying/" aria-label="Choosing and Applying RL for LLMs: Reward Design, Method Selection and Pitfalls by Task Type"></a>
         </article>
         </div>
       </details>
