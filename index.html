@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
+          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">The Original Transformer: The Baseline Version of Every Component</span><span lang="zh">原始 Transformer：每个部件的基础版本</span></h4>
@@ -468,18 +468,6 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">The embedding table turns token ids into vectors and the LM head turns the final hidden state back into a distribution over the vocabulary. This post explains why dense embeddings are needed, shows that a lookup is a one-hot matrix product and what that means for gradients, derives the softmax cross-entropy gradient, analyzes weight tying (benefits, costs, and why large models often untie), quantifies the cost of large vocabularies in parameters, FLOPs and logit memory, covers vocabulary parallelism and stabilizers such as z-loss and logit soft-capping, and distinguishes the LM head from MTP and draft heads.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 12 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/embedding-lm-head/" aria-label="Embeddings and the LM Head: The Model&#x27;s Entrance and Exit"></a>
-        </article>
-        <article class="entry">
-          <h4><span lang="en">Absolute Positional Encodings: Sinusoidal and Learned</span><span lang="zh">绝对位置编码：正弦函数与可学习向量</span></h4>
-          <p class="entry-sum">Self-attention is permutation-equivariant, so position must be injected explicitly. This post proves that property, lists what a good positional encoding should provide, then analyzes the two absolute schemes: the original sinusoidal encoding (its frequencies, the rotation identity that makes relative offsets linear, the distance-only and direction-blind dot product) and the learned position embeddings of BERT and GPT-2. It expands the attention score into content and position terms, discusses adding versus concatenating, and explains why absolute encodings extrapolate poorly.</p>
-          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 10 min | Author: Jiaoyang Ruan</p>
-          <a class="entry-link" href="blog/transformer/absolute-position/" aria-label="Absolute Positional Encodings: Sinusoidal and Learned"></a>
-        </article>
-        <article class="entry">
-          <h4><span lang="en">Relative Positional Encoding: From Shaw et al. to the T5 Bias</span><span lang="zh">相对位置编码：从 Shaw 到 T5 的位置偏置</span></h4>
-          <p class="entry-sum">Instead of adding position to the input, relative schemes inject the offset i - j directly into the attention computation. Starting from the four-term expansion of the attention score, this post covers Shaw et al.&#x27;s relative key embeddings, Transformer-XL&#x27;s decomposition, and in detail the T5 relative position bias: a learned scalar per head and distance bucket, with exact buckets for short distances and logarithmic buckets for long ones. It walks through the bucketing function, shows a reference implementation, and closes with ALiBi&#x27;s fixed linear biases and the trade-offs of bias-based schemes.</p>
-          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 10 min | Author: Jiaoyang Ruan</p>
-          <a class="entry-link" href="blog/transformer/relative-position-bias/" aria-label="Relative Positional Encoding: From Shaw et al. to the T5 Bias"></a>
         </article>
         </div>
       </details>
