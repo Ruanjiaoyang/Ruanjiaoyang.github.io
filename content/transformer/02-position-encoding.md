@@ -370,6 +370,11 @@ $$
 
 距离越远惩罚越大。每个头一个固定斜率，取几何数列 $m_h = 2^{-8h/H}$；对 8 个头就是 $\tfrac12,\tfrac14,\dots,\tfrac1{256}$。斜率大的头只看附近，斜率小的头看得很远。
 
+![ALiBi](images/alibi-fig3.png)
+
+*图 1：ALiBi 的计算方式。左边是查询与键的点积（因果掩码下的下三角部分），加上一个只依赖距离的固定偏置矩阵（$0, -1, -2, \dots$）乘以每个头的斜率 $m$。图片来源：Press et al., "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation", ICLR 2022, Figure 3。*
+
+
 ALiBi 没有任何位置参数，主要卖点是**外推**（Train Short, Test Long）：在 1024 长度上训练，在 2048 甚至更长的序列上困惑度仍然稳定，优于正弦、RoPE 和 T5 偏置。原因是线性惩罚对任何距离都有定义，远处 token 的权重被持续压低，模型在更长序列上看到的注意力模式与训练时类似。BLOOM、MPT 等模型采用了 ALiBi。
 
 但它的"外推"在一定程度上来自对远距离注意力的强烈抑制：很远的 token 几乎得不到注意力，模型实际上在一个有效窗口内工作。对需要从长上下文中精确检索的任务，这可能成为限制。
@@ -448,6 +453,11 @@ $$
 $$
 
 频率沿用正弦编码：$\theta_i = \text{base}^{-2i/d}$，$\text{base} = 10000$。这里的 $d$ 是**每个注意力头的维度** $d_k$（如 128），每个头独立旋转。
+
+![RoPE 的实现](images/roformer-fig1-rope.png)
+
+*图 2：RoPE 的实现。上方虚线框：在一个二维子空间里，把 $(x_1, x_2)$ 按位置 $m$ 旋转角度 $m\theta_1$。下方：把查询或键的 $d$ 维分成 $d/2$ 对，第 $i$ 对用频率 $\theta_i$ 旋转，不同位置的 token（1 到 6）旋转的角度不同。图片来源：Su et al., "RoFormer: Enhanced Transformer with Rotary Position Embedding", 2021, Figure 1。*
+
 
 **与正弦编码的区别：**
 

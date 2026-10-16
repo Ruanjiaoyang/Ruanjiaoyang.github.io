@@ -80,8 +80,12 @@ def figures(body):
     """An image paragraph followed by an italic paragraph becomes <figure> with <figcaption>.
     Images live in content/<series>/images/ and are copied to blog/<series>/images/."""
     body = body.replace('src="images/', 'src="../images/')
-    return re.sub(r'<p>(<img [^>]*?) ?/?></p>\s*<p><em>(.*?)</em></p>',
-                  r'<figure>\1 loading="lazy"><figcaption>\2</figcaption></figure>', body, flags=re.S)
+    def fig(m):
+        rest = m.group(3).strip()
+        return (f'<figure>{m.group(1)} loading="lazy"><figcaption>{m.group(2)}</figcaption></figure>'
+                + (f"\n<p>{rest}</p>" if rest else ""))
+    # a caption line followed directly by text shares its paragraph; that text becomes its own paragraph
+    return re.sub(r'<p>(<img [^>]*?) ?/?></p>\s*<p><em>(.*?)</em>(.*?)</p>', fig, body, flags=re.S)
 
 
 def reading_minutes(md):

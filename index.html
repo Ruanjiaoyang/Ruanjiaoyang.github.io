@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">2 posts</span><span lang="zh">2 篇</span></span></summary>
+          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Transformer Architecture Foundations: Every Component of the Original Paper</span><span lang="zh">Transformer 架构基础：原始论文的每个部件</span></h4>
@@ -460,8 +460,14 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
         <article class="entry">
           <h4><span lang="en">Positional Encoding: From Sinusoids to RoPE and NoPE</span><span lang="zh">位置编码：从正弦函数到 RoPE 与 NoPE</span></h4>
           <p class="entry-sum">Self-attention is permutation-equivariant, so every Transformer must inject position somehow. This post covers the whole family in one place: sinusoidal and learned absolute encodings and the four-term expansion that exposes their weakness; relative schemes from Shaw et al. and Transformer-XL to the T5 bucketed bias and ALiBi; RoPE, derived from the requirement that rotated queries and keys have a relative-only dot product; context extension by position interpolation, NTK-aware base scaling, YaRN and Dual Chunk Attention; and finally Partial RoPE, the decoupled RoPE used by MLA, and NoPE layers in hybrid designs.</p>
-          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 32 min | Author: Jiaoyang Ruan</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 33 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/position-encoding/" aria-label="Positional Encoding: From Sinusoids to RoPE and NoPE"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Attention: From Multi-Head Attention to Sparse, Linear and Hybrid Designs</span><span lang="zh">注意力：从多头注意力到稀疏、线性与混合架构</span></h4>
+          <p class="entry-sum">Every attention variant answers one of a few questions: how to shrink the KV cache, how to let each query look at fewer past tokens, how to replace the growing cache with a fixed-size state, and how to compute the same result with less memory traffic. Starting from scaled dot-product and multi-head attention, this post covers the KV cache and why decoding is memory-bound; MQA, GQA and MLA with its matrix absorption; sliding windows, local-global interleaving and attention sinks; the sparse designs NSA and DSA; linear attention and its recurrent and chunkwise forms, the delta rule, Gated DeltaNet and KDA, and Lightning Attention; hybrid stacks; and FlashAttention&#x27;s tiling with online softmax. Key identities are checked with short NumPy programs.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 52 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/attention/" aria-label="Attention: From Multi-Head Attention to Sparse, Linear and Hybrid Designs"></a>
         </article>
         </div>
       </details>

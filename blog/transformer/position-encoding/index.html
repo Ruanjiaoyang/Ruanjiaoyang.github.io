@@ -111,7 +111,7 @@ footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line);
 <li><a href="#4-rope用绝对位置的旋转实现相对位置">4. RoPE：用绝对位置的旋转实现相对位置</a><ul>
 <li><a href="#41-目标">4.1 目标</a></li>
 <li><a href="#42-二维情形复数乘法就是旋转">4.2 二维情形：复数乘法就是旋转</a></li>
-<li><a href="#43-推广到-154-维">4.3 推广到 $d$ 维</a></li>
+<li><a href="#43-推广到-156-维">4.3 推广到 $d$ 维</a></li>
 <li><a href="#44-远程衰减">4.4 远程衰减</a></li>
 <li><a href="#45-工程细节">4.5 工程细节</a></li>
 <li><a href="#46-一个常见的误解rope-本身能外推吗">4.6 一个常见的误解：RoPE 本身能外推吗</a></li>
@@ -413,6 +413,7 @@ print(relative_position_bucket(torch.tensor([0, -1, -7, -8, -20, -127, -500, 3])
 e_{ij}^{(h)} = \frac{q_i^{(h)\top}k_j^{(h)}}{\sqrt{d_k}} - m_h\cdot(i - j),\qquad j\le i
 $$</p>
 <p>距离越远惩罚越大。每个头一个固定斜率，取几何数列 $m_h = 2^{-8h/H}$；对 8 个头就是 $\tfrac12,\tfrac14,\dots,\tfrac1{256}$。斜率大的头只看附近，斜率小的头看得很远。</p>
+<figure><img alt="ALiBi" src="../images/alibi-fig3.png" loading="lazy"><figcaption>图 1：ALiBi 的计算方式。左边是查询与键的点积（因果掩码下的下三角部分），加上一个只依赖距离的固定偏置矩阵（$0, -1, -2, \dots$）乘以每个头的斜率 $m$。图片来源：Press et al., "Train Short, Test Long: Attention with Linear Biases Enables Input Length Extrapolation", ICLR 2022, Figure 3。</figcaption></figure>
 <p>ALiBi 没有任何位置参数，主要卖点是<strong>外推</strong>（Train Short, Test Long）：在 1024 长度上训练，在 2048 甚至更长的序列上困惑度仍然稳定，优于正弦、RoPE 和 T5 偏置。原因是线性惩罚对任何距离都有定义，远处 token 的权重被持续压低，模型在更长序列上看到的注意力模式与训练时类似。BLOOM、MPT 等模型采用了 ALiBi。</p>
 <p>但它的"外推"在一定程度上来自对远距离注意力的强烈抑制：很远的 token 几乎得不到注意力，模型实际上在一个有效窗口内工作。对需要从长上下文中精确检索的任务，这可能成为限制。</p>
 <h3 id="35-偏置类方法的共同代价">3.5 偏置类方法的共同代价</h3>
@@ -456,7 +457,7 @@ $$</p>
 <p>$$
 f(q,m)^\top f(k,n) = q^\top R(m\theta)^\top R(n\theta)\,k = q^\top R\big((n-m)\theta\big)\,k
 $$</p>
-<h3 id="43-推广到-154-维">4.3 推广到 $d$ 维</h3>
+<h3 id="43-推广到-156-维">4.3 推广到 $d$ 维</h3>
 <p>把 $d$ 维向量分成 $d/2$ 个二维子空间，每个子空间用不同的频率旋转：</p>
 <p>$$
 R_m = \mathrm{diag}\Big(R(m\theta_0),\ R(m\theta_1),\ \dots,\ R(m\theta_{d/2-1})\Big),\qquad
@@ -467,6 +468,7 @@ $$</p>
 (R_mq)^\top(R_nk) = q^\top R_m^\top R_n\,k = q^\top R_{n-m}\,k
 $$</p>
 <p>频率沿用正弦编码：$\theta_i = \text{base}^{-2i/d}$，$\text{base} = 10000$。这里的 $d$ 是<strong>每个注意力头的维度</strong> $d_k$（如 128），每个头独立旋转。</p>
+<figure><img alt="RoPE 的实现" src="../images/roformer-fig1-rope.png" loading="lazy"><figcaption>图 2：RoPE 的实现。上方虚线框：在一个二维子空间里，把 $(x_1, x_2)$ 按位置 $m$ 旋转角度 $m\theta_1$。下方：把查询或键的 $d$ 维分成 $d/2$ 对，第 $i$ 对用频率 $\theta_i$ 旋转，不同位置的 token（1 到 6）旋转的角度不同。图片来源：Su et al., "RoFormer: Enhanced Transformer with Rotary Position Embedding", 2021, Figure 1。</figcaption></figure>
 <p><strong>与正弦编码的区别：</strong></p>
 <table>
 <thead>
