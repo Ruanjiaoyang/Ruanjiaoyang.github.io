@@ -497,7 +497,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Reinforcement Learning for LLMs</span><span lang="zh">LLM 强化学习</span></h3>
-          <span class="series-count"><span lang="en">2 posts</span><span lang="zh">2 篇</span></span></summary>
+          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Foundations of RL for LLMs: Policy Gradients, KL Regularization, RLHF and RLVR</span><span lang="zh">LLM 强化学习基础：从策略梯度、KL 约束到 RLHF 与 RLVR</span></h4>
@@ -510,6 +510,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">PPO as it is used for LLMs: the four models (policy, reference, reward model, critic) and what each costs, per-token rewards with a KL penalty, TD errors, Monte Carlo returns and GAE as a bias-variance dial, the clipped surrogate and its six cases, dual clipping, the clipped value loss, and the implementation details that decide whether PPO works at all. It then covers the variants that target the critic and the reward (VC-PPO, VAPO, VinePPO, PRIME, PSGPO, PF-PPO), the debates around PPO (does the clip matter, reward over-optimization and length hacking, PPO versus DPO), and why long-horizon agentic RL has renewed interest in critics. It ends with the tasks PPO suits best. GAE and the clipped objective come with tested NumPy code.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 29 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/rl/ppo/" aria-label="The PPO Line: Critics, GAE, Clipping, and the Return of the Critic in Long-Horizon Tasks"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">The DPO Line: Solving RL Away in Closed Form, and the Limits of Offline Preference Optimization</span><span lang="zh">DPO 主线：把 RL 解析地消掉，以及离线偏好优化的边界</span></h4>
+          <p class="entry-sum">Direct Preference Optimization from the ground up: the Bradley-Terry model, the closed-form optimal policy of the KL-regularized objective, why the partition function cancels, the resulting loss and its gradient, what beta really controls, and what the implicit reward is. It then covers DPO&#x27;s known failure modes (distribution shift from being offline, likelihood displacement, length exploitation, overfitting under deterministic preferences, dependence on the SFT starting point), the variants that target each of them (IPO, KTO, ORPO, SimPO, RSO, online and iterative DPO, Step-DPO, TDPO, beta-DPO), and the debates around offline versus online preference learning and DPO versus PPO. It ends with the data conditions and tasks DPO fits. A NumPy toy reproduces likelihood displacement.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 28 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/rl/dpo/" aria-label="The DPO Line: Solving RL Away in Closed Form, and the Limits of Offline Preference Optimization"></a>
         </article>
         </div>
       </details>
