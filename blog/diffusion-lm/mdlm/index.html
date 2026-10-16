@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MDLM 与 MD4：掩码扩散就是加权的掩码语言模型 · Jiaoyang Ruan</title>
+<meta name="description" content="MDLM and MD4 show that plain absorbing-state (masked) diffusion, with the right parameterization and a continuous-time objective, is far stronger than earlier results suggested. This post derives the interpolating forward process and its posterior, the SUBS parameterization (zero masking probability and carry-over unmasking), the Rao-Blackwellized discrete-time bound and its continuous-time limit, which is a weighted average of masked-language-modeling losses and is invariant to the noise schedule. It proves that SEDD&#x27;s absorbing loss reduces to exactly the same objective, then covers efficient ancestral sampling with caching, semi-autoregressive generation, and MD4&#x27;s generalized state-dependent schedules.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">扩散语言模型 · 第 3 篇</p>
+    <h1>MDLM 与 MD4：掩码扩散就是加权的掩码语言模型</h1>
+    <p class="subtitle">MDLM and MD4: Masked Diffusion as a Weighted Masked Language Model</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">扩散语言模型</span><span class="tag">掩码扩散</span><span class="tag">MDLM</span><span class="tag">MD4</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#0-三条路线汇合到同一个目标">0. 三条路线汇合到同一个目标</a></li>
+<li><a href="#1-记号">1. 记号</a></li>
+<li><a href="#2-插值离散扩散">2. 插值离散扩散</a><ul>
+<li><a href="#21-边际分布">2.1 边际分布</a></li>
+<li><a href="#22-两个时刻之间的转移">2.2 两个时刻之间的转移</a></li>
+<li><a href="#23-后验">2.3 后验</a></li>
+</ul>
+</li>
+<li><a href="#3-掩码扩散">3. 掩码扩散</a><ul>
+<li><a href="#31-前向掩码过程">3.1 前向掩码过程</a></li>
+<li><a href="#32-化简后验">3.2 化简后验</a></li>
+</ul>
+</li>
+<li><a href="#4-subs-参数化">4. SUBS 参数化</a><ul>
+<li><a href="#41-用网络代替-146">4.1 用网络代替 $x$</a></li>
+<li><a href="#42-两个替换">4.2 两个"替换"</a></li>
+</ul>
+</li>
+<li><a href="#5-rao-blackwellized-似然界">5. Rao-Blackwellized 似然界</a><ul>
+<li><a href="#51-离散时间的-elbo">5.1 离散时间的 ELBO</a></li>
+<li><a href="#52-每一项-kl-的闭式解">5.2 每一项 KL 的闭式解</a></li>
+<li><a href="#53-不做替换会怎样">5.3 不做替换会怎样</a></li>
+<li><a href="#54-为什么叫-rao-blackwellization">5.4 为什么叫 Rao-Blackwellization</a></li>
+</ul>
+</li>
+<li><a href="#6-连续时间极限">6. 连续时间极限</a><ul>
+<li><a href="#61-取-197">6.1 取 $T\to\infty$</a></li>
+<li><a href="#62-对噪声调度不变">6.2 对噪声调度不变</a></li>
+<li><a href="#63-线性调度下的样子">6.3 线性调度下的样子</a></li>
+</ul>
+</li>
+<li><a href="#7-掩码扩散语言模型">7. 掩码扩散语言模型</a><ul>
+<li><a href="#71-推广到序列">7.1 推广到序列</a></li>
+<li><a href="#72-与-bert-的联系">7.2 与 BERT 的联系</a></li>
+<li><a href="#73-训练上的关键细节">7.3 训练上的关键细节</a></li>
+<li><a href="#74-训练流程">7.4 训练流程</a></li>
+</ul>
+</li>
+<li><a href="#8-mdlm-与-sedd-吸收态是同一个目标">8. MDLM 与 SEDD 吸收态是同一个目标</a></li>
+<li><a href="#9-采样">9. 采样</a><ul>
+<li><a href="#91-祖先采样">9.1 祖先采样</a></li>
+<li><a href="#92-缓存没有新-token-被揭开就不用重算">9.2 缓存：没有新 token 被揭开就不用重算</a></li>
+<li><a href="#93-半自回归生成">9.3 半自回归生成</a></li>
+</ul>
+</li>
+<li><a href="#10-md4同一个-elbo-的另一种写法与推广">10. MD4：同一个 ELBO 的另一种写法与推广</a><ul>
+<li><a href="#101-相同的连续时间-elbo">10.1 相同的连续时间 ELBO</a></li>
+<li><a href="#102-genmd4按-token-设定掩码速率">10.2 GenMD4：按 token 设定掩码速率</a></li>
+<li><a href="#103-实验">10.3 实验</a></li>
+</ul>
+</li>
+<li><a href="#11-实验与局限">11. 实验与局限</a></li>
+<li><a href="#12-小结">12. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="0-三条路线汇合到同一个目标">0. 三条路线汇合到同一个目标</h2>
+<p>前两篇里，离散扩散有两种写法：</p>
+<ul>
+<li><strong>D3PM</strong>：离散时间，网络预测 $x_0$ 的分布，代入真实后验，用 ELBO 训练；</li>
+<li><strong>SEDD</strong>：连续时间，网络预测概率比值（concrete score），用 score entropy 训练。</li>
+</ul>
+<p>两者都在<strong>吸收态</strong>（[MASK]）噪声下效果最好。SEDD 第 5.4 节还留下了一个线索：吸收态下真实比值等于"时间的标量函数 × 与时间无关的条件分布"，所以学比值和学"被 mask 的位置是什么 token"本质上是同一件事。</p>
+<p>2024 年年中，三篇工作几乎同时沿着这个线索给出了清晰的答案：</p>
+<ul>
+<li><strong>MDLM</strong>（Masked Diffusion Language Models，Sahoo et al., NeurIPS 2024）：从 D3PM 出发，设计了一个简单的参数化（SUBS），推出连续时间下极其简洁的损失，并配合现代的训练技巧，把掩码扩散的困惑度推到新的水平；</li>
+<li><strong>MD4</strong>（Simplified and Generalized Masked Diffusion，Shi et al., NeurIPS 2024）：独立推出了同样的连续时间 ELBO，并把它推广到每个 token 有不同掩码速率的情形；</li>
+<li><strong>RADD</strong>（Ou et al., 2024）：从 SEDD 出发，证明网络根本不需要时间输入。这是下一篇的内容。</li>
+</ul>
+<p>它们共同的结论可以浓缩成一句话：<strong>掩码扩散的训练目标，就是对不同掩码比例下的 BERT 式掩码语言模型损失做加权平均。</strong> 这一篇以 MDLM 为主线完整推导这个结论，然后说明它和 SEDD 的关系，最后介绍 MD4 的推广。</p>
+<h2 id="1-记号">1. 记号</h2>
+<p>MDLM 使用<strong>列向量</strong>和<strong>连续时间</strong> $t\in[0,1]$：</p>
+<ul>
+<li>每个 token 是 $K$ 个类别之一，用 one-hot <strong>列向量</strong>表示。所有 one-hot 向量的集合记为 $\mathcal V = \{x\in\{0,1\}^K : \sum_{i=1}^K x_i = 1\}$；</li>
+<li>第 $K$ 个类别是特殊的 [MASK] token，它的 one-hot 向量记为 $m$；</li>
+<li>$\mathrm{Cat}(\cdot\,;\pi)$ 是类别概率为 $\pi\in\Delta^K$ 的分类分布，$\Delta^K$ 是 $K$ 维概率单纯形；</li>
+<li>$\mathbf 1$ 是全 1 向量；$\langle a,b\rangle$ 是内积，$a\odot b$ 是逐元素乘积；</li>
+<li>干净数据记为 $x$，$t$ 时刻的加噪变量记为 $z_t$；$t=0$ 无噪声，$t=1$ 噪声最强；$s&lt;t$ 表示比 $t$ 更早（噪声更少）的时刻。</li>
+</ul>
+<p><strong>噪声调度</strong> $\alpha_t\in[0,1]$ 是关于 $t$ 严格递减的函数，$\alpha_0\approx 1$，$\alpha_1\approx 0$。它表示 $t$ 时刻保留原始信息的比例。</p>
+<p>三篇文章的记号对照如下（都对应"保留原 token 的概率"）：</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>D3PM</th>
+<th>SEDD</th>
+<th>MDLM</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>时间</td>
+<td>离散 $t=1,\dots,T$</td>
+<td>连续 $t\in[0,T]$</td>
+<td>连续 $t\in[0,1]$</td>
+</tr>
+<tr>
+<td>保留概率</td>
+<td>$\bar\alpha_t$</td>
+<td>$e^{-\bar\sigma(t)}$</td>
+<td>$\alpha_t$</td>
+</tr>
+<tr>
+<td>干净数据 / 加噪变量</td>
+<td>$x_0$ / $x_t$</td>
+<td>$x_0$ / $x_t$</td>
+<td>$x$ / $z_t$</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-插值离散扩散">2. 插值离散扩散</h2>
+<p>MDLM 先定义一个比掩码更一般的前向过程：在干净数据 $x$ 和一个固定的先验分布 $\mathrm{Cat}(\cdot\,;\pi)$ 之间做插值。这是高斯扩散 $x_t = \alpha_t x + \sigma_t\epsilon$ 的离散对应物。</p>
+<h3 id="21-边际分布">2.1 边际分布</h3>
+<p>$$
+q(z_t\mid x) = \mathrm{Cat}\big(z_t;\ \alpha_t x + (1-\alpha_t)\pi\big)
+$$</p>
+<p>读法：以概率 $\alpha_t$ 保持原样，以概率 $1-\alpha_t$ 从先验 $\pi$ 中重新采样。$\pi$ 取均匀分布时就是均匀扩散，取 $\pi = m$ 时就是掩码扩散。</p>
+<h3 id="22-两个时刻之间的转移">2.2 两个时刻之间的转移</h3>
+<p>对 $s&lt;t$：</p>
+<p>$$
+q(z_t\mid z_s) = \mathrm{Cat}\big(z_t;\ \alpha_{t|s}\,z_s + (1-\alpha_{t|s})\pi\big),\qquad \alpha_{t|s} = \frac{\alpha_t}{\alpha_s}
+$$</p>
+<p><strong>验证.</strong> 先从 $x$ 到 $z_s$，再从 $z_s$ 到 $z_t$，两步复合后 $z_t$ 的分布应当等于 $q(z_t\mid x)$。把 $z_s$ 的分布 $\alpha_s x + (1-\alpha_s)\pi$ 代入转移（转移对 $z_s$ 是线性的）：</p>
+<p>$$
+\alpha_{t|s}\big(\alpha_s x + (1-\alpha_s)\pi\big) + (1-\alpha_{t|s})\pi
+= \alpha_t x + \big(\alpha_{t|s} - \alpha_t + 1 - \alpha_{t|s}\big)\pi
+= \alpha_t x + (1-\alpha_t)\pi
+$$</p>
+<p>第一个等号用了 $\alpha_{t|s}\alpha_s = \alpha_t$，并且 $\pi$ 是一个分布，"从 $\pi$ 重新采样"之后再插值仍然是 $\pi$。所以 $\alpha_{t|s}=\alpha_t/\alpha_s$ 正是让两步复合一致的选择。读法：从 $s$ 到 $t$，有 $1-\alpha_{t|s}$ 比例的概率质量被转移到先验 $\pi$ 上。</p>
+<h3 id="23-后验">2.3 后验</h3>
+<p>和 DDPM、D3PM 一样，ELBO 中需要真实后验 $q(z_s\mid z_t,x)$。由贝叶斯公式和马尔可夫性：</p>
+<p>$$
+q(z_s\mid z_t, x) = \frac{q(z_t\mid z_s)\,q(z_s\mid x)}{q(z_t\mid x)}
+$$</p>
+<p>逐项写出（把每一项都看作关于 $z_s$ 的 $K$ 维向量）：</p>
+<ul>
+<li>$q(z_t\mid z_s)$ 作为 $z_s$ 的函数：$\mathrm{Cat}(z_t;\alpha_{t|s}z_s + (1-\alpha_{t|s})\pi) = \alpha_{t|s}\langle z_t, z_s\rangle + (1-\alpha_{t|s})\langle z_t,\pi\rangle$。对所有可能的 $z_s$ 排成向量，就是 $\alpha_{t|s}z_t + (1-\alpha_{t|s})\mathbf 1\pi^\top z_t$；</li>
+<li>$q(z_s\mid x)$ 作为 $z_s$ 的函数：向量 $\alpha_s x + (1-\alpha_s)\pi$；</li>
+<li>分母 $q(z_t\mid x) = \alpha_t z_t^\top x + (1-\alpha_t)z_t^\top\pi$，是个标量。</li>
+</ul>
+<p>于是</p>
+<p>$$
+q(z_s\mid z_t, x) = \mathrm{Cat}\left(z_s;\ \frac{\big[\alpha_{t|s}z_t + (1-\alpha_{t|s})\mathbf 1\pi^\top z_t\big]\odot\big[\alpha_s x + (1-\alpha_s)\pi\big]}{\alpha_t z_t^\top x + (1-\alpha_t)z_t^\top\pi}\right)
+$$</p>
+<p>这就是 D3PM 后验公式 $\mathrm{Cat}\big(x_tQ_t^\top\odot x_0\bar Q_{t-1}/(x_0\bar Q_t x_t^\top)\big)$ 在插值型转移矩阵下的具体形式。一般情况下它不算简单，但对掩码扩散可以大幅化简。</p>
+<h2 id="3-掩码扩散">3. 掩码扩散</h2>
+<h3 id="31-前向掩码过程">3.1 前向掩码过程</h3>
+<p>取 $\pi = m$：</p>
+<p>$$
+q(z_t\mid x) = \mathrm{Cat}\big(z_t;\ \alpha_t x + (1-\alpha_t)m\big)
+$$</p>
+<p>每个 token 以概率 $\alpha_t$ 保持原样，以概率 $1-\alpha_t$ 变成 [MASK]。一旦变成 [MASK]，在之后的所有时刻都保持 [MASK]（吸收态）：$q(z_t\mid z_s = m) = \mathrm{Cat}(z_t;\alpha_{t|s}m + (1-\alpha_{t|s})m) = \mathrm{Cat}(z_t; m)$。</p>
+<h3 id="32-化简后验">3.2 化简后验</h3>
+<p>把 $\pi=m$ 代入 2.3 节的公式，按 $z_t$ 是否为 [MASK] 分两种情况。</p>
+<p><strong>情况一：$z_t\ne m$。</strong> 此时 $z_t$ 一定等于 $x$（[MASK] 不会变回普通 token，普通 token 也不会变成其他普通 token）。$\pi^\top z_t = m^\top z_t = 0$，第一个方括号是 $\alpha_{t|s}z_t$，只在 $z_t$ 那一位非零。所以 $z_s$ 必然等于 $z_t$：</p>
+<p>$$
+q(z_s\mid z_t, x) = \mathrm{Cat}(z_s;\ z_t)
+$$</p>
+<p><strong>情况二：$z_t = m$。</strong> 第一个方括号是 $\alpha_{t|s}m + (1-\alpha_{t|s})\mathbf 1$：在 $m$ 位为 1，在其他位为 $1-\alpha_{t|s}$。与第二个方括号 $\alpha_s x + (1-\alpha_s)m$ 逐元素相乘：</p>
+<ul>
+<li>$m$ 位：$1\cdot(1-\alpha_s) = 1-\alpha_s$；</li>
+<li>$x$ 位：$(1-\alpha_{t|s})\alpha_s = \alpha_s - \alpha_t$；</li>
+<li>其他位：0。</li>
+</ul>
+<p>分母是 $\alpha_t\langle m,x\rangle + (1-\alpha_t) = 1-\alpha_t$（$x$ 是干净 token，$\langle m,x\rangle=0$）。所以</p>
+<p>$$
+q(z_s\mid z_t, x) =
+\begin{cases}
+\mathrm{Cat}(z_s;\ z_t), &amp; z_t\ne m \\[6pt]
+\mathrm{Cat}\left(z_s;\ \dfrac{(1-\alpha_s)\,m + (\alpha_s - \alpha_t)\,x}{1-\alpha_t}\right), &amp; z_t = m
+\end{cases}
+$$</p>
+<p><strong>读法.</strong> 如果 $t$ 时刻没被 mask，那么更早的 $s$ 时刻也一定没被 mask，而且就是它本身。如果 $t$ 时刻被 mask 了，那么在 $s$ 时刻：</p>
+<ul>
+<li>以概率 $\dfrac{\alpha_s - \alpha_t}{1-\alpha_t}$ 还没被 mask，是原始 token $x$（它恰好在 $(s,t]$ 之间被 mask）；</li>
+<li>以概率 $\dfrac{1-\alpha_s}{1-\alpha_t}$ 已经是 [MASK]（它在 $s$ 之前就被 mask 了）。</li>
+</ul>
+<p>两个概率之和为 1。直观上，"在 $(s,t]$ 内被 mask"占"在 $t$ 之前被 mask"的比例，正是 $\frac{\alpha_s-\alpha_t}{1-\alpha_t}$。</p>
+<h2 id="4-subs-参数化">4. SUBS 参数化</h2>
+<h3 id="41-用网络代替-146">4.1 用网络代替 $x$</h3>
+<p>反向过程需要 $p_\theta(z_s\mid z_t)$。和 D3PM 的 $x_0$ 参数化一样，引入去噪网络</p>
+<p>$$
+x_\theta(z_t, t):\ \mathcal V\times[0,1]\to\Delta^K
+$$</p>
+<p>输出对干净 token 的预测分布，然后把它代入真实后验：</p>
+<p>$$
+p_\theta(z_s\mid z_t) = q\big(z_s\mid z_t,\ x = x_\theta(z_t,t)\big)
+$$</p>
+<h3 id="42-两个替换">4.2 两个"替换"</h3>
+<p>MDLM 的参数化叫 <strong>SUBS</strong>（substitution），因为它在网络输出上做了两处替换，把真实后验的已知结构直接写进模型。</p>
+<p><strong>1. 零掩码概率（Zero Masking Probabilities）.</strong> 干净数据里不会出现 [MASK]，$\langle x, m\rangle = 0$。所以网络也不应该把概率分给 [MASK]：把 [MASK] 对应的 logit 设为 $-\infty$，保证</p>
+<p>$$
+\langle x_\theta(z_t,t),\ m\rangle = 0
+$$</p>
+<p><strong>2. 保留已揭开的 token（Carry-Over Unmasking）.</strong> 由情况一，未被 mask 的 token 在反向过程中不会改变。所以如果 $z_t\ne m$，网络直接复制输入：</p>
+<p>$$
+x_\theta(z_t, t) = z_t,\qquad z_t\ne m
+$$</p>
+<p>两处替换之后，反向过程为</p>
+<p>$$
+p_\theta(z_s\mid z_t) =
+\begin{cases}
+\mathrm{Cat}(z_s;\ z_t), &amp; z_t\ne m \\[6pt]
+\mathrm{Cat}\left(z_s;\ \dfrac{(1-\alpha_s)\,m + (\alpha_s-\alpha_t)\,x_\theta(z_t,t)}{1-\alpha_t}\right), &amp; z_t = m
+\end{cases}
+$$</p>
+<p><strong>为什么这样做有用.</strong> 不加这两处替换，$p_\theta$ 仍然是一个合法的反向过程，但它要靠训练去"学会"两件我们本来就知道的事：不要输出 [MASK]、不要改已经揭开的 token。D3PM 的做法相当于没有这两处替换，而下一节会看到，加上替换之后 ELBO 中的 KL 项可以<strong>解析地</strong>化成一个非常简单的形式。</p>
+<h2 id="5-rao-blackwellized-似然界">5. Rao-Blackwellized 似然界</h2>
+<h3 id="51-离散时间的-elbo">5.1 离散时间的 ELBO</h3>
+<p>把 $[0,1]$ 分成 $T$ 段，记 $t(i) = i/T$，$s(i) = (i-1)/T$。和 DDPM 一样，负 ELBO 分成三项：</p>
+<p>$$
+\mathcal L_{\text{NELBO}} = \underbrace{\mathbb E_q\big[-\log p_\theta(x\mid z_{t(0)})\big]}_{\mathcal L_{\text{recons}}} + \underbrace{\mathcal L_{\text{diffusion}}}_{\text{逐步 KL}} + \underbrace{D_{\mathrm{KL}}\big(q(z_{t(T)}\mid x)\,\|\,p_\theta(z_{t(T)})\big)}_{\mathcal L_{\text{prior}}}
+$$</p>
+<p>当 $\alpha_0 = 1$ 时 $z_0 = x$，重构项为 0；当 $\alpha_1 = 0$ 时 $z_1$ 一定是 [MASK]，与先验 $p_\theta(z_1) = \mathrm{Cat}(\cdot\,;m)$ 完全一致，先验项也为 0。所以只剩中间的扩散项</p>
+<p>$$
+\mathcal L_{\text{diffusion}} = \sum_{i=1}^{T}\mathbb E_{q(z_{t(i)}\mid x)}\Big[D_{\mathrm{KL}}\big(q(z_{s(i)}\mid z_{t(i)},x)\,\big\|\,p_\theta(z_{s(i)}\mid z_{t(i)})\big)\Big]
+$$</p>
+<h3 id="52-每一项-kl-的闭式解">5.2 每一项 KL 的闭式解</h3>
+<p>固定一步 $s&lt;t$，按 $z_t$ 分情况。</p>
+<p><strong>$z_t\ne m$：</strong> 真实后验和 $p_\theta$ 都是 $\mathrm{Cat}(z_s; z_t)$，KL 为 0。</p>
+<p><strong>$z_t = m$：</strong> 两个分布只在 $m$ 和"非 mask token"上有质量：</p>
+<table>
+<thead>
+<tr>
+<th>$z_s$</th>
+<th>真实后验 $q$</th>
+<th>模型 $p_\theta$</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>$m$</td>
+<td>$\frac{1-\alpha_s}{1-\alpha_t}$</td>
+<td>$\frac{1-\alpha_s}{1-\alpha_t}$</td>
+</tr>
+<tr>
+<td>$x$（真实 token）</td>
+<td>$\frac{\alpha_s-\alpha_t}{1-\alpha_t}$</td>
+<td>$\frac{\alpha_s-\alpha_t}{1-\alpha_t}\langle x_\theta, x\rangle$</td>
+</tr>
+<tr>
+<td>其他 token $v$</td>
+<td>0</td>
+<td>$\frac{\alpha_s-\alpha_t}{1-\alpha_t}\langle x_\theta, v\rangle$</td>
+</tr>
+</tbody>
+</table>
+<p>$m$ 那一行两边相等（这是零掩码概率带来的），KL 中这一项为 $\log 1 = 0$。真实后验在"其他 token"上为 0，不贡献 KL。只剩 $x$ 那一行：</p>
+<p>$$
+D_{\mathrm{KL}} = \frac{\alpha_s-\alpha_t}{1-\alpha_t}\log\frac{1}{\langle x_\theta(z_t,t),\ x\rangle} = -\frac{\alpha_s-\alpha_t}{1-\alpha_t}\log\langle x_\theta(z_t,t),\ x\rangle
+$$</p>
+<p>两种情况可以合并成一个式子：$z_t\ne m$ 时，由保留已揭开 token，$x_\theta(z_t,t) = z_t = x$，$\log\langle x_\theta, x\rangle = \log 1 = 0$，自动为 0。因此</p>
+<p>$$
+\mathcal L_{\text{diffusion}} = \sum_{i=1}^T\mathbb E_q\left[\frac{\alpha_{t(i)} - \alpha_{s(i)}}{1-\alpha_{t(i)}}\log\big\langle x_\theta(z_{t(i)}, t(i)),\ x\big\rangle\right]
+$$</p>
+<p>注意 $\alpha_t&lt;\alpha_s$，所以系数为负，乘上 $\log\langle\cdot\rangle\le 0$ 得到非负的损失。<strong>每一项就是被 mask 位置上的交叉熵，乘一个只依赖时间的权重。</strong></p>
+<h3 id="53-不做替换会怎样">5.3 不做替换会怎样</h3>
+<p>作为对比，如果网络可以把概率分给 [MASK]（即没有零掩码概率这一处替换），记 $\mu = \langle x_\theta, m\rangle$。代入 2.3 节的一般后验，模型在 $z_t = m$ 时给出：</p>
+<ul>
+<li>$z_s = m$ 的概率：$\dfrac{\alpha_s\mu + 1-\alpha_s}{\alpha_t\mu + 1-\alpha_t}$；</li>
+<li>$z_s = x$ 的概率：$\dfrac{(\alpha_s-\alpha_t)\langle x_\theta, x\rangle}{\alpha_t\mu + 1-\alpha_t}$。</li>
+</ul>
+<p>与真实后验做 KL，得到</p>
+<p>$$
+\frac{\alpha_s-\alpha_t}{1-\alpha_t}\log\frac{\alpha_t\mu + (1-\alpha_t)}{(1-\alpha_t)\langle x_\theta, x\rangle}
++ \frac{1-\alpha_s}{1-\alpha_t}\log\frac{(1-\alpha_s)\big(\alpha_t\mu + (1-\alpha_t)\big)}{(1-\alpha_t)\big(\alpha_s\mu + (1-\alpha_s)\big)}
+$$</p>
+<p>这个式子更复杂，含有比值的对数，数值上也不稳定（$\alpha$ 接近 0 或 1 时容易溢出）。当 $\mu = 0$ 时，第二项的对数里分子分母相等，第一项的 $\alpha_t\mu$ 消失，就退化为 5.2 节的结果。</p>
+<h3 id="54-为什么叫-rao-blackwellization">5.4 为什么叫 Rao-Blackwellization</h3>
+<p>Rao-Blackwell 定理说的是：对一个估计量，把能解析算出的部分先求条件期望，得到的新估计量方差不会更大。这里的对应关系是：</p>
+<ul>
+<li>原始 ELBO 里的一部分随机性（模型在 [MASK] 上的概率、已揭开 token 是否被改动）在 SUBS 下可以<strong>解析地</strong>确定；</li>
+<li>把这部分"先算掉"，损失只剩被 mask 位置的交叉熵，蒙特卡洛估计的方差更小，界也更紧。</li>
+</ul>
+<p>所以 MDLM 把这个化简后的界称为 Rao-Blackwellized 似然界。</p>
+<h2 id="6-连续时间极限">6. 连续时间极限</h2>
+<h3 id="61-取-197">6.1 取 $T\to\infty$</h3>
+<p>记 $\Delta = 1/T$，$s = t - \Delta$。当 $\Delta\to 0$ 时</p>
+<p>$$
+\frac{\alpha_t - \alpha_s}{1-\alpha_t} = \frac{\alpha_t - \alpha_{t-\Delta}}{1-\alpha_t}\approx\frac{\alpha_t'\,\Delta}{1-\alpha_t}
+$$</p>
+<p>求和 $\sum_i(\cdot)\Delta$ 变成积分，得到<strong>连续时间的 NELBO</strong>：</p>
+<p>$$
+\mathcal L^\infty_{\text{NELBO}} = \mathbb E_q\int_0^1\frac{\alpha_t'}{1-\alpha_t}\log\big\langle x_\theta(z_t,t),\ x\big\rangle\,dt
+$$</p>
+<p>$\alpha_t'&lt;0$，$\log\langle\cdot\rangle\le 0$，所以被积函数非负。论文还说明，对于掩码扩散，离散时间的界随 $T$ 增大而变紧，因此连续时间的版本是其中最紧的。这和 VDM 对高斯扩散得出的结论一致。</p>
+<h3 id="62-对噪声调度不变">6.2 对噪声调度不变</h3>
+<p>做变量代换 $\gamma = \log(1-\alpha_t)$。则</p>
+<p>$$
+d\gamma = \frac{-\alpha_t'}{1-\alpha_t}\,dt
+$$</p>
+<p>$t$ 从 0 到 1 时，$\gamma$ 从 $\log(1-\alpha_0) = -\infty$ 增加到 $\log(1-\alpha_1) = 0$。于是</p>
+<p>$$
+\mathcal L^\infty_{\text{NELBO}} = -\,\mathbb E_q\int_{-\infty}^{0}\log\big\langle x_\theta(z_\gamma,\gamma),\ x\big\rangle\,d\gamma
+$$</p>
+<p>$z_\gamma$ 的分布只依赖 $\gamma$（每个 token 以概率 $1-\alpha = e^\gamma$ 被 mask）。只要 $\alpha_0 = 1$、$\alpha_1 = 0$，<strong>损失的值就和 $\alpha_t$ 的具体函数形式无关</strong>。不同调度只是在 $\gamma$ 轴上重新分配采样点，会影响蒙特卡洛估计的方差和训练动态，但不影响优化的目标本身。这对应连续高斯扩散里"ELBO 只依赖 SNR 两端的值"的结论。</p>
+<h3 id="63-线性调度下的样子">6.3 线性调度下的样子</h3>
+<p>最常用的是线性调度 $\alpha_t = 1-t$。此时 $\alpha_t' = -1$，$1-\alpha_t = t$：</p>
+<p>$$
+\mathcal L^\infty_{\text{NELBO}} = \mathbb E_{t\sim\mathcal U[0,1]}\,\mathbb E_{z_t}\left[\frac1t\,\big(-\log\langle x_\theta(z_t,t),\ x\rangle\big)\right]
+$$</p>
+<p>$t$ 正好是每个 token 被 mask 的概率。所以：<strong>随机选一个掩码比例 $t$，按这个比例随机 mask，在被 mask 的位置上算交叉熵，再乘以 $1/t$。</strong></p>
+<p>这里的 $1/t$ 和前两篇得到的权重完全一致：D3PM 在互信息调度下的吸收态损失是按 $1/t$ 加权的 MLM，SEDD 在 log-linear 调度下 log 项的权重也是 $1/t$。三条路线到了这里汇合。</p>
+<p>$1/t$ 的直觉：掩码比例为 $t$ 时，期望有 $tL$ 个位置被 mask，对它们的交叉熵求和再除以 $t$，相当于把"每个被 mask 位置的平均损失"乘以序列长度 $L$。所以损失在不同掩码比例之间是"按位置平均"的，不会因为 mask 得多就自动占更大比重。</p>
+<h2 id="7-掩码扩散语言模型">7. 掩码扩散语言模型</h2>
+<h3 id="71-推广到序列">7.1 推广到序列</h3>
+<p>对长度为 $L$ 的序列 $x^{1:L}$，做两个假设：</p>
+<ol>
+<li>前向加噪在各位置之间<strong>独立</strong>；</li>
+<li>反向过程在给定整个 $z_t^{1:L}$ 的条件下，在各位置之间<strong>独立分解</strong>：$p_\theta(z_s^{1:L}\mid z_t^{1:L}) = \prod_l p_\theta(z_s^l\mid z_t^{1:L})$。</li>
+</ol>
+<p>注意第二条中每个位置的分布都以<strong>整个序列</strong> $z_t^{1:L}$ 为条件，网络 $x_\theta^l(z_t^{1:L},t)$ 是一个双向的 Transformer，第 $l$ 个输出是对位置 $l$ 的预测。在这两个假设下，序列的 NELBO 就是各位置之和：</p>
+<p>$$
+\mathcal L^\infty_{\text{NELBO}} = \mathbb E_q\int_0^1\frac{\alpha_t'}{1-\alpha_t}\sum_{l=1}^L\log\big\langle x_\theta^l(z_t^{1:L},t),\ x^l\big\rangle\,dt
+$$</p>
+<p>由保留已揭开 token，求和中未被 mask 的位置贡献为 0，实际只在被 mask 的位置上计算。</p>
+<h3 id="72-与-bert-的联系">7.2 与 BERT 的联系</h3>
+<p>BERT 的 MLM 损失是在固定掩码比例（15%）下，对被 mask 位置算交叉熵。MDLM 的损失是<strong>对所有掩码比例做加权平均的 MLM 损失</strong>。区别只有两点：掩码比例是随机的、覆盖从 0 到 1 的整个范围；不同比例按 $\frac{-\alpha_t'}{1-\alpha_t}$ 加权。</p>
+<p>这建立了扩散模型与 encoder-only 模型之间的直接联系：<strong>一个用这种方式训练的 BERT，就是一个合法的生成模型</strong>，可以计算似然上界，也可以从全 [MASK] 开始采样。</p>
+<h3 id="73-训练上的关键细节">7.3 训练上的关键细节</h3>
+<p>MDLM 强调，掩码扩散过去表现不佳，有相当一部分原因在工程上而不是方法上：</p>
+<ol>
+<li><strong>分词</strong>：使用大词表（如 GPT-2 或 BERT 的 3 万到 5 万词表），而不是小词表（如 8k）。论文发现这对捕捉长距离依赖很重要，也是先前一些离散扩散基线吃亏的地方。</li>
+<li><strong>数值稳定性</strong>：直接实现 5.2 节的简化损失，只在被 mask 的位置上算交叉熵，而不是像 D3PM 那样具体化转移矩阵、在概率空间里做乘除。</li>
+<li><strong>网络结构</strong>：使用带旋转位置编码（RoPE）的 Diffusion Transformer（DiT），用自适应 LayerNorm 注入时间，取代 D3PM 中的 T5 结构。</li>
+<li><strong>低差异采样器</strong>：一个批次里如果独立采样 $t$，可能恰好都集中在某一段，导致 ELBO 估计方差很大。低差异采样把 $[0,1]$ 分成 $B$ 段（$B$ 为批大小），第 $i$ 个样本取 $t_i = \frac{i-1+u}{B}$，其中所有样本共用一个 $u\sim\mathcal U[0,1]$。这样每个 $t_i$ 的边缘仍是均匀分布（无偏），但一个批次总能覆盖整个时间区间，方差显著降低。</li>
+</ol>
+<h3 id="74-训练流程">7.4 训练流程</h3>
+<ol>
+<li>采样一个批次的序列 $x^{1:L}$，用低差异采样得到每个样本的 $t$；</li>
+<li>每个位置独立地以概率 $1-\alpha_t$ 替换成 [MASK]，得到 $z_t^{1:L}$；</li>
+<li>网络前向，得到每个位置的 logits，把 [MASK] 的 logit 设为 $-\infty$；</li>
+<li>在被 mask 的位置上计算交叉熵 $-\log\langle x_\theta^l, x^l\rangle$，乘以 $\frac{-\alpha_t'}{1-\alpha_t}$（线性调度下为 $1/t$），求和并反向传播。</li>
+</ol>
+<h2 id="8-mdlm-与-sedd-吸收态是同一个目标">8. MDLM 与 SEDD 吸收态是同一个目标</h2>
+<p>SEDD 学习比值 $s_\theta$，MDLM 学习去噪分布 $x_\theta$。SEDD 第 5.4 节推出，吸收态下被 mask 的位置 $i$ 上真实比值为</p>
+<p>$$
+\frac{p_t(\text{第 }i\text{ 位换成 }v)}{p_t(x_t)} = \frac{\alpha_t}{1-\alpha_t}\,p_0\big(x^i = v\mid x_t^{\text{UM}}\big)
+$$</p>
+<p>这里把 SEDD 的 $e^{-\bar\sigma(t)}$ 写成了 $\alpha_t$。这提示一种参数化：</p>
+<p>$$
+s_\theta(x_t,t)_{i,v} = \frac{\alpha_t}{1-\alpha_t}\,x_\theta^i(x_t,t)_v
+$$</p>
+<p>即用一个输出概率分布的网络 $x_\theta$ 乘以已知的标量来表示比值。把它代入 SEDD 的吸收态损失（SEDD 一文 5.4 节，这次保留常数项 $K$）。记 $r = \frac{\alpha_t}{1-\alpha_t}$，对一个被 mask 的位置，括号内为</p>
+<p>$$
+\sum_{v}s_v - r\log s_{x^i} + K(r)
+= r\sum_v x_{\theta,v} - r\log r - r\log x_{\theta,x^i} + r\log r - r
+$$</p>
+<p>由于 $x_\theta$ 是概率分布，$\sum_v x_{\theta,v} = 1$，第一项为 $r$，与最后的 $-r$ 抵消；$-r\log r$ 与 $+r\log r$ 抵消。只剩</p>
+<p>$$
+-r\log x_\theta^i(x_t,t)_{x^i}
+$$</p>
+<p>前面还有 SEDD 的权重 $\sigma(t)$。由 $\alpha_t = e^{-\bar\sigma(t)}$ 得 $\alpha_t' = -\sigma(t)\alpha_t$，于是</p>
+<p>$$
+\sigma(t)\cdot r = \sigma(t)\frac{\alpha_t}{1-\alpha_t} = \frac{-\alpha_t'}{1-\alpha_t}
+$$</p>
+<p>这正是 MDLM 的权重。<strong>所以在这个参数化下，SEDD 吸收态的 $\mathcal L_{\text{DWDSE}}$ 与 MDLM 的连续时间 NELBO 逐项相等，连常数都一致。</strong> 两者给出的是同一个似然上界。</p>
+<p>两者的区别只在于参数化：SEDD 直接输出（对数）比值，没有"$\sum_v$ 为常数"这个约束，网络要自己学会这个结构；MDLM 输出一个归一化的分布，结构由 softmax 自动保证。这也部分解释了 MDLM 在同等设置下略好于 SEDD。</p>
+<h2 id="9-采样">9. 采样</h2>
+<h3 id="91-祖先采样">9.1 祖先采样</h3>
+<p>生成长度为 $L$ 的序列：</p>
+<ol>
+<li>初始化 $z_1^l = m$，对所有 $l$；</li>
+<li>把 $[0,1]$ 分成 $T$ 步。在每一步，给定 $z_t^{1:L}$，对每个位置独立地从 $p_\theta(z_s^l\mid z_t^{1:L})$ 采样：
+   - 已揭开的位置保持不变；
+   - 被 mask 的位置以概率 $\frac{\alpha_s - \alpha_t}{1-\alpha_t}$ 揭开，揭开时从 $x_\theta^l(z_t^{1:L}, t)$ 中采样一个 token；否则保持 [MASK]。</li>
+<li>到 $t=0$ 时所有位置都已揭开。</li>
+</ol>
+<p>这个过程和 SEDD 的 Tweedie $\tau$-leaping 在吸收态下完全相同（见 SEDD 一文 6.4 节）。</p>
+<h3 id="92-缓存没有新-token-被揭开就不用重算">9.2 缓存：没有新 token 被揭开就不用重算</h3>
+<p>保留已揭开 token 带来一个实用的加速。如果在某一步里<strong>没有任何位置被揭开</strong>，那么 $z_s^{1:L} = z_t^{1:L}$，序列没有变化。$T$ 很大时这种情况很常见：每一步揭开的期望数量是 $\frac{\alpha_s-\alpha_t}{1-\alpha_t}\times(\text{剩余 mask 数})$，步长很小时大多是 0。</p>
+<p>如果去噪网络<strong>不以时间 $t$ 为条件</strong>，那么输入不变时输出也不变，可以直接复用上一步缓存的 $x_\theta(z_t^{1:L})$，跳过这一步的网络调用。这样网络调用次数不超过"序列发生变化的步数"，最多 $L$ 次，与 $T$ 无关。$T$ 可以取得很大（离散化误差很小），而计算量几乎不增加。</p>
+<p>这要求网络不依赖时间。下一篇 RADD 会证明，掩码扩散的最优去噪器本来就与 $t$ 无关（这在第 8 节的比值分解中已经可以看出：$p_0(x^i=v\mid x_t^{\text{UM}})$ 里没有 $t$），所以去掉时间条件不损失表达能力。相比之下，SEDD 直接参数化的比值带有 $\frac{\alpha_t}{1-\alpha_t}$ 这个随时间变化的因子，网络必须以时间为条件，因此不能这样缓存。</p>
+<h3 id="93-半自回归生成">9.3 半自回归生成</h3>
+<p>训练时的上下文长度是固定的 $L$。要生成任意长度的文本，MDLM 用了一种<strong>半自回归</strong>（SAR）方法：</p>
+<ol>
+<li>先用上面的过程生成一段长度为 $L$ 的序列 $\tilde x^{1:L}$；</li>
+<li>取它的后 $L-L'$ 个 token，$\tilde x^{L'+1:L}$，作为下一轮的<strong>前缀</strong>，放在新序列的位置 $1$ 到 $L-L'$；位置 $L-L'+1$ 到 $L$ 初始化为 [MASK]；</li>
+<li>运行反向过程。由保留已揭开 token，前缀位置自动保持不变，只有后 $L'$ 个位置被生成；</li>
+<li>把新生成的 $L'$ 个 token 接到之前的序列后面，得到长度 $L+L'$ 的序列；</li>
+<li>重复，每次把窗口向后移动 $L'$。</li>
+</ol>
+<p>块内仍然是并行的扩散生成，块与块之间是自回归的。这个思路后来在"块扩散"（Block Diffusion）等工作中被系统化，成为扩散语言模型支持变长生成和 KV 缓存的常用方案。</p>
+<h2 id="10-md4同一个-elbo-的另一种写法与推广">10. MD4：同一个 ELBO 的另一种写法与推广</h2>
+<p>MD4（Shi et al., 2024）与 MDLM 同期独立完成，结论高度一致，侧重点有所不同。</p>
+<h3 id="101-相同的连续时间-elbo">10.1 相同的连续时间 ELBO</h3>
+<p>MD4 从连续时间马尔可夫链出发，同样推出了掩码扩散的 ELBO 是带权重的交叉熵积分：</p>
+<p>$$
+\mathcal L_\infty = \int_0^1\frac{\alpha_t'}{1-\alpha_t}\,\mathbb E_{q(z_t\mid x)}\left[\sum_{l:\,z_t^l = m}(x^l)^\top\log\mu_\theta^l(z_t,t)\right]dt
+$$</p>
+<p>$\mu_\theta$ 对应 MDLM 的 $x_\theta$。MD4 的几个补充观点：</p>
+<ul>
+<li>它强调这个 ELBO 可以写成<strong>对掩码比例的积分</strong>，并给出了与 SEDD 的 score entropy、与先前连续时间离散扩散的损失之间的对应关系，指出先前一些工作的损失之所以表现较差，部分原因是参数化和数值实现；</li>
+<li>它同样指出，在 $\alpha_0=1,\alpha_1=0$ 的前提下，ELBO 对调度不变，调度的选择影响的是方差和样本质量；</li>
+<li>它讨论了前向过程的时间反转，给出了与 MDLM 相同的反向转移和采样过程。</li>
+</ul>
+<h3 id="102-genmd4按-token-设定掩码速率">10.2 GenMD4：按 token 设定掩码速率</h3>
+<p>MD4 的主要推广是<strong>状态相关的掩码调度</strong>。在 MDLM 里所有 token 的掩码概率都是同一个 $1-\alpha_t$。但不同 token 的"难度"不同：功能词容易从上下文推出，内容词更难。直觉上，可以让容易的 token 晚一点被 mask（反向时早一点被揭开），让难的 token 早一点被 mask。</p>
+<p>GenMD4 让每个 token 类别 $v$ 有自己的调度 $\alpha_{t,v}$，例如多项式形式</p>
+<p>$$
+\alpha_{t,v} = 1 - t^{w_v}
+$$</p>
+<p>其中 $w_v&gt;0$ 是可学习的参数。前向过程中，干净 token $x^l = v$ 在 $t$ 时刻以概率 $1-\alpha_{t,v}$ 被 mask。ELBO 相应地变成每个 token 用自己的权重 $\frac{-\alpha_{t,v}'}{1-\alpha_{t,v}}$。</p>
+<p>因为 $w_v$ 决定了哪些位置被 mask，而 mask 是离散采样，ELBO 对 $w_v$ 的梯度不能直接反向传播。MD4 用 REINFORCE 估计这部分梯度，并用 leave-one-out 基线降低方差。</p>
+<p>论文报告 GenMD4 在困惑度上比 MD4 有进一步改善。代价是调度不再与 token 无关，第 6.2 节的"调度不变性"不再成立，反向采样时也需要知道每个位置的 token 类别才能确定揭开速率（揭开前并不知道，需要用模型预测来处理）。</p>
+<h3 id="103-实验">10.3 实验</h3>
+<p>MD4 在 OpenWebText 上训练 GPT-2 规模的模型，零样本困惑度优于同期的 SEDD 等离散扩散模型；在像素级图像建模（把每个像素值当作一个类别）上，也取得了当时离散扩散模型中领先的 bits/dim 结果。这说明掩码扩散不只是语言模型的技巧，而是一类通用的离散生成模型。</p>
+<h2 id="11-实验与局限">11. 实验与局限</h2>
+<p><strong>MDLM 的实验.</strong> 论文在 LM1B 和 OpenWebText 上训练，与自回归模型、SEDD、D3PM 等对比：</p>
+<ul>
+<li>在 OpenWebText 上，MDLM 的困惑度上界约为 23，SEDD 约为 24，同规模、同训练量的自回归模型约为 17.5（具体数值取决于训练 token 数，以论文为准）；</li>
+<li>消融实验表明，SUBS 参数化、连续时间目标、低差异采样、大词表和现代结构各自都有贡献，合起来把掩码扩散与自回归模型的差距缩小了一大截；</li>
+<li>在生成质量上，配合缓存的祖先采样在相同网络调用次数下优于 SEDD；</li>
+<li>论文还在 DNA 序列建模上验证了 MDLM，显示这一框架在生物序列上同样有效。</li>
+</ul>
+<p><strong>局限.</strong></p>
+<ul>
+<li><strong>与自回归模型仍有差距</strong>：困惑度上界与同规模 AR 模型仍有明显差距（部分来自"上界"与"精确似然"之间的差距本身）；</li>
+<li><strong>并行采样的独立性近似</strong>：每一步内被揭开的多个位置是独立采样的，步数少时可能出现不一致（例如同一个词被揭开两次）；</li>
+<li><strong>已揭开的 token 不能修改</strong>：保留已揭开 token 既是优点也是限制，早期的错误无法在后续步骤中纠正。后续的 remasking 类采样器（如 ReMDM）专门处理这个问题；</li>
+<li><strong>评测的微妙之处</strong>：Zheng et al.（2024）指出，常用的 Gumbel-max 类别采样在低精度（如 float32）下会截断概率分布，使生成困惑度偏低、多样性下降，比较不同模型的生成质量时需要统一用高精度采样。</li>
+</ul>
+<h2 id="12-小结">12. 小结</h2>
+<ul>
+<li><strong>插值离散扩散</strong> $q(z_t\mid x) = \mathrm{Cat}(\alpha_t x + (1-\alpha_t)\pi)$ 是高斯扩散的离散对应物；取 $\pi = m$ 就是掩码扩散，此时后验极其简单：未 mask 的保持不变，被 mask 的以 $\frac{\alpha_s-\alpha_t}{1-\alpha_t}$ 的概率回到原 token。</li>
+<li><strong>SUBS 参数化</strong>把两条已知结构写进网络：不预测 [MASK]，已揭开的 token 原样复制。这使 ELBO 中的 KL 解析地化成被 mask 位置上的加权交叉熵（Rao-Blackwellization）。</li>
+<li><strong>连续时间 NELBO</strong> 是 $\int_0^1\frac{\alpha_t'}{1-\alpha_t}\log\langle x_\theta,x\rangle\,dt$，对调度形式不变；线性调度下就是按 $1/t$ 加权的 MLM 损失，与 D3PM、SEDD 推出的权重一致。</li>
+<li><strong>与 SEDD 等价</strong>：把比值参数化为 $\frac{\alpha_t}{1-\alpha_t}x_\theta$，SEDD 吸收态损失与 MDLM 损失逐项相等。</li>
+<li><strong>采样</strong>：祖先采样从全 [MASK] 开始逐步揭开；网络不依赖时间时可以缓存，网络调用次数不超过序列长度；半自回归方式可以生成任意长度。</li>
+<li><strong>MD4</strong> 独立推出了同样的 ELBO，并把掩码速率推广为与 token 类别有关、可学习的调度。</li>
+</ul>
+<p>第 9.2 节用到了一个还没证明的结论：掩码扩散的最优去噪器与时间无关。下一篇 RADD 会从 SEDD 的比值出发严格证明这一点，并进一步说明吸收态扩散的似然与任意顺序自回归模型之间的关系。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Devlin et al. <em>BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding.</em> NAACL 2019.</li>
+<li>Austin et al. <em>Structured Denoising Diffusion Models in Discrete State-Spaces.</em> NeurIPS 2021.</li>
+<li>Kingma et al. <em>Variational Diffusion Models.</em> NeurIPS 2021.</li>
+<li>Peebles &amp; Xie. <em>Scalable Diffusion Models with Transformers.</em> ICCV 2023.</li>
+<li>Lou, Meng &amp; Ermon. <em>Discrete Diffusion Modeling by Estimating the Ratios of the Data Distribution.</em> ICML 2024.</li>
+<li>Sahoo et al. <em>Simple and Effective Masked Diffusion Language Models.</em> NeurIPS 2024.</li>
+<li>Shi et al. <em>Simplified and Generalized Masked Diffusion for Discrete Data.</em> NeurIPS 2024.</li>
+<li>Ou et al. <em>Your Absorbing Discrete Diffusion Secretly Models the Conditional Distributions of Clean Data.</em> 2024.</li>
+<li>Zheng et al. <em>Masked Diffusion Models are Secretly Time-Agnostic Masked Models and Exploit Inaccurate Categorical Sampling.</em> 2024.</li>
+<li>Arriola et al. <em>Block Diffusion: Interpolating Between Autoregressive and Diffusion Language Models.</em> ICLR 2025.</li>
+<li>Wang et al. <em>Remasking Discrete Diffusion Models with Inference-Time Scaling.</em> 2025.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>
