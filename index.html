@@ -411,6 +411,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 22 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/diffusion-lm/d3pm/" aria-label="D3PM: Diffusion Models in Discrete State Spaces"></a>
         </article>
+        <article class="entry">
+          <h4><span lang="en">SEDD: Score Entropy and the Ratios of the Data Distribution</span><span lang="zh">SEDD：离散空间里的 score 是概率比值</span></h4>
+          <p class="entry-sum">In continuous diffusion the score is the gradient of the log density, which does not exist on a discrete vocabulary. SEDD replaces it with the concrete score, the vector of probability ratios p_t(y)/p_t(x), and learns it with score entropy, a Bregman-divergence loss that respects positivity. This post sets up continuous-time discrete diffusion (CTMCs), derives the reverse-time rate matrix, the implicit and denoising forms of score entropy, the ELBO that turns the loss into a perplexity bound, the closed-form transition kernels for uniform and absorbing noise, the discrete Tweedie formula behind Tweedie tau-leaping, and conditional infilling with an unconditional model.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 33 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/diffusion-lm/sedd/" aria-label="SEDD: Score Entropy and the Ratios of the Data Distribution"></a>
+        </article>
         </div>
       </div>
       <!-- BLOG:END -->
