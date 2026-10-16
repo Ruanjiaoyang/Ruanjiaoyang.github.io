@@ -348,6 +348,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       <!-- BLOG:START -->
       <div class="entries">
         <article class="entry">
+          <h3><span lang="en">DDIM: Fewer Sampling Steps Without Retraining</span><span lang="zh">DDIM：不重新训练，把 1000 步采样压到几十步</span></h3>
+          <p class="entry-sum">The DDPM training loss only depends on the marginals q(x_t|x_0), not on the Markov forward chain. DDIM exploits this freedom to define a family of non-Markovian inference processes with the same marginals. This post derives the family in two ways (by induction on the paper&#x27;s definition and by solving for undetermined coefficients), shows why one network trained with L_simple serves every member of the family, and covers the eta parameter, deterministic sampling, step skipping, inversion, interpolation, and the interpretation of DDIM as an Euler step of an ODE.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/generative-models/ddim/" aria-label="DDIM: Fewer Sampling Steps Without Retraining"></a>
+        </article>
+        <article class="entry">
           <h3><span lang="en">DDPM: Add Noise Step by Step, Then Learn to Remove It</span><span lang="zh">DDPM：一步步加噪，再一步步去噪</span></h3>
           <p class="entry-sum">DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the closed-form marginal q(x_t|x_0), the tractable posterior q(x_{t-1}|x_t,x_0) by completing the square, the full variational bound and its decomposition into L_T, L_{t-1} and L_0, and how the Gaussian KL terms collapse to the simple noise-prediction loss. It then covers the training and sampling algorithms, the choice of reverse variance, noise schedules, network architecture, and the epsilon, x_0 and v parameterizations.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 26 min | Author: Jiaoyang Ruan</p>
