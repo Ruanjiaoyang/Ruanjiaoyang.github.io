@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">2 posts</span><span lang="zh">2 篇</span></span></summary>
+          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">The Original Transformer: The Baseline Version of Every Component</span><span lang="zh">原始 Transformer：每个部件的基础版本</span></h4>
@@ -462,6 +462,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">How text becomes token ids. The post compares word, character and subword granularity, works through BPE training and encoding by hand, then covers byte-level BPE and pre-tokenization (GPT-2), WordPiece (BERT), the Unigram language model and SentencePiece, and the trade-offs of vocabulary size. It closes with the visible consequences of tokenization: why LLMs struggle to spell or count letters, how numbers are split, why some languages cost more tokens, and where glitch tokens come from.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 13 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/tokenizer/" aria-label="Tokenization: Words, Characters, Subwords and BPE"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">Embeddings and the LM Head: The Model&#x27;s Entrance and Exit</span><span lang="zh">Embedding 与 LM Head：模型的入口和出口</span></h4>
+          <p class="entry-sum">The embedding table turns token ids into vectors and the LM head turns the final hidden state back into a distribution over the vocabulary. This post explains why dense embeddings are needed, shows that a lookup is a one-hot matrix product and what that means for gradients, derives the softmax cross-entropy gradient, analyzes weight tying (benefits, costs, and why large models often untie), quantifies the cost of large vocabularies in parameters, FLOPs and logit memory, covers vocabulary parallelism and stabilizers such as z-loss and logit soft-capping, and distinguishes the LM head from MTP and draft heads.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 12 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/embedding-lm-head/" aria-label="Embeddings and the LM Head: The Model&#x27;s Entrance and Exit"></a>
         </article>
         </div>
       </details>

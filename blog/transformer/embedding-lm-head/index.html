@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Embedding 与 LM Head：模型的入口和出口 · Jiaoyang Ruan</title>
+<meta name="description" content="The embedding table turns token ids into vectors and the LM head turns the final hidden state back into a distribution over the vocabulary. This post explains why dense embeddings are needed, shows that a lookup is a one-hot matrix product and what that means for gradients, derives the softmax cross-entropy gradient, analyzes weight tying (benefits, costs, and why large models often untie), quantifies the cost of large vocabularies in parameters, FLOPs and logit memory, covers vocabulary parallelism and stabilizers such as z-loss and logit soft-capping, and distinguishes the LM head from MTP and draft heads.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+  onload="document.querySelectorAll('.article, .toc').forEach(function (el) { renderMathInElement(el, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '$', right: '$', display: false}], throwOnError: false}) })"></script>
+<style>
+/* Same tokens as the homepage; single reading column for long-form posts. */
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #141b26; --muted: #5a6475; --line: #e1e5ec;
+  --accent: #2743c9; --accent-soft: #e8ecfb; --code-bg: #eef1f6;
+  --f-display: "Bricolage Grotesque", "Noto Sans SC", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Noto Sans SC", system-ui, -apple-system, "PingFang SC", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0d121b; --surface: #141b27; --ink: #e6eaf2; --muted: #95a0b3; --line: #232c3b;
+    --accent: #8fa3ff; --accent-soft: #1b2440; --code-bg: #182030; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 17px; line-height: 1.8; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 3px; }
+.wrap { max-width: 760px; margin: 0 auto; padding-block: 48px 96px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); }
+.back { font: 500 0.82rem/1 var(--f-mono); letter-spacing: 0.06em; color: var(--muted); text-decoration: none; }
+.back:hover { color: var(--accent); }
+header.post-head { margin: 40px 0 32px; display: grid; gap: 10px; }
+.kicker { font: 500 0.78rem/1.4 var(--f-mono); letter-spacing: 0.08em; color: var(--accent); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(1.8rem, 4.5vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
+.subtitle { color: var(--muted); font-size: 1.05rem; margin: 0; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font: 0.85rem/1 var(--f-mono); }
+.tag { font: 500 0.78rem/1 var(--f-body); padding: 6px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.toc { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 12px 22px; margin-bottom: 36px; font-size: 0.92rem; }
+.toc summary { cursor: pointer; font: 500 0.75rem/1.6 var(--f-mono); letter-spacing: 0.12em; color: var(--muted); padding: 4px 0; }
+.toc .toc { border: 0; padding: 0; margin: 0; background: none; }
+.toc ul { list-style: none; margin: 0; padding-left: 18px; }
+.toc > div > ul { padding-left: 0; margin-top: 8px; }
+.toc li { margin: 3px 0; }
+.toc a { color: var(--ink); text-decoration: none; }
+.toc a:hover { color: var(--accent); }
+.article h2 { font-family: var(--f-display); font-weight: 500; font-size: 1.55rem; line-height: 1.3; margin: 2.4em 0 0.6em; padding-top: 0.4em; border-top: 1px solid var(--line); scroll-margin-top: 20px; }
+.article h3 { font-size: 1.15rem; font-weight: 600; margin: 1.8em 0 0.5em; }
+.article p, .article li { color: var(--ink); }
+.article strong { font-weight: 600; }
+.article blockquote { margin: 1.2em 0; padding: 4px 18px; border-left: 3px solid var(--accent); color: var(--muted); background: var(--surface); }
+.article code { font-family: var(--f-mono); font-size: 0.86em; background: var(--code-bg); padding: 2px 5px; border-radius: 4px; }
+.article pre { background: var(--code-bg); border-radius: 10px; padding: 16px 18px; overflow-x: auto; line-height: 1.55; }
+.article pre code { background: none; padding: 0; font-size: 0.85rem; }
+.article table { border-collapse: collapse; width: 100%; font-size: 0.92rem; display: block; overflow-x: auto; }
+.article th, .article td { border: 1px solid var(--line); padding: 8px 12px; text-align: left; vertical-align: top; }
+.article th { background: var(--surface); font-weight: 600; }
+.article .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+.article img { max-width: 100%; height: auto; }
+.article figure { margin: 1.8em 0; text-align: center; }
+.article figure img { background: #fff; border-radius: 8px; padding: 12px; }
+.article figcaption { margin-top: 10px; color: var(--muted); font-size: 0.85rem; line-height: 1.6; text-align: center; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+@media (max-width: 600px) { body { font-size: 16px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="../../../#blog">← Jiaoyang Ruan · Blog</a>
+  <header class="post-head">
+    <p class="kicker">Transformer 架构 · 第 2 篇</p>
+    <h1>Embedding 与 LM Head：模型的入口和出口</h1>
+    <p class="subtitle">Embeddings and the LM Head: The Model&#x27;s Entrance and Exit</p>
+    <div class="meta"><span>2026-10-16</span><span class="tag">Transformer</span><span class="tag">Embedding</span><span class="tag">LM Head</span><span class="tag">Weight Tying</span></div>
+  </header>
+  <details class="toc"><summary>目录 · Table of Contents</summary><div class="toc">
+<ul>
+<li><a href="#0-入口和出口">0. 入口和出口</a></li>
+<li><a href="#1-嵌入层">1. 嵌入层</a><ul>
+<li><a href="#11-定义">1.1 定义</a></li>
+<li><a href="#12-查表就是乘以-one-hot">1.2 查表就是乘以 one-hot</a></li>
+<li><a href="#13-为什么需要稠密的嵌入">1.3 为什么需要稠密的嵌入</a></li>
+<li><a href="#14-尺度为什么原始-transformer-要乘以-33">1.4 尺度：为什么原始 Transformer 要乘以 $\sqrt d$</a></li>
+</ul>
+</li>
+<li><a href="#2-lm-head">2. LM Head</a><ul>
+<li><a href="#21-定义">2.1 定义</a></li>
+<li><a href="#22-交叉熵损失与它的梯度">2.2 交叉熵损失与它的梯度</a></li>
+</ul>
+</li>
+<li><a href="#3-权重共享weight-tying">3. 权重共享（Weight Tying）</a><ul>
+<li><a href="#31-做法">3.1 做法</a></li>
+<li><a href="#32-好处">3.2 好处</a></li>
+<li><a href="#33-代价">3.3 代价</a></li>
+<li><a href="#34-现代模型怎么选">3.4 现代模型怎么选</a></li>
+</ul>
+</li>
+<li><a href="#4-大词表的代价">4. 大词表的代价</a><ul>
+<li><a href="#41-参数量">4.1 参数量</a></li>
+<li><a href="#42-计算量">4.2 计算量</a></li>
+<li><a href="#43-logits-的显存">4.3 Logits 的显存</a></li>
+<li><a href="#44-词表并行">4.4 词表并行</a></li>
+</ul>
+</li>
+<li><a href="#5-输出层的数值稳定">5. 输出层的数值稳定</a></li>
+<li><a href="#6-lm-head-与-mtp-draft-head-的区别">6. LM Head 与 MTP / Draft Head 的区别</a></li>
+<li><a href="#7-一个参考实现">7. 一个参考实现</a></li>
+<li><a href="#8-小结">8. 小结</a></li>
+<li><a href="#参考文献">参考文献</a></li>
+</ul>
+</div>
+</details>
+  <article class="article">
+<h2 id="0-入口和出口">0. 入口和出口</h2>
+<p>在原始 Transformer（第 0 篇）中，一个 token 进出模型要经过两个对称的部件：</p>
+<ul>
+<li><strong>入口：嵌入层</strong>（embedding）。把分词器给出的整数 id 变成 $d$ 维向量；</li>
+<li><strong>出口：LM Head</strong>（语言模型头）。把最后一层的隐藏向量变成词表上每个 token 的分数，再经过 softmax 得到下一个 token 的概率。</li>
+</ul>
+<p>原始 Transformer 让两者共享同一个矩阵，并把嵌入乘以 $\sqrt d$。这一篇讲清楚这两个部件在做什么、为什么可以共享、什么时候不该共享，以及词表变大之后它们为什么成了显著的成本。</p>
+<h2 id="1-嵌入层">1. 嵌入层</h2>
+<h3 id="11-定义">1.1 定义</h3>
+<p>对词表大小为 $V$、隐藏维度为 $d$ 的模型，嵌入矩阵为</p>
+<p>$$
+E\in\mathbb R^{V\times d}
+$$</p>
+<p>第 $i$ 行 $E[i]$ 是 id 为 $i$ 的 token 的向量。嵌入就是查表：</p>
+<p>$$
+x_t = E[\text{token}_t]
+$$</p>
+<p>一个 $[B, L]$ 的 id 张量经过嵌入层变成 $[B, L, d]$ 的向量张量。</p>
+<h3 id="12-查表就是乘以-one-hot">1.2 查表就是乘以 one-hot</h3>
+<p>把 token $i$ 写成 one-hot 行向量 $e_i\in\{0,1\}^{1\times V}$（第 $i$ 位为 1），则</p>
+<p>$$
+e_iE = E[i]
+$$</p>
+<p>所以嵌入层在数学上就是一个<strong>没有偏置的线性层</strong>，输入是 one-hot 向量。实现时不会真的做这个矩阵乘法（$V$ 维的 one-hot 乘以 $V\times d$ 的矩阵太浪费），而是直接按索引取行。这也说明嵌入层几乎不消耗计算，它的成本在<strong>存储</strong>和<strong>访存</strong>上。</p>
+<p><strong>梯度是稀疏的.</strong> 由于 $x_t = e_iE$，损失对 $E$ 的梯度是</p>
+<p>$$
+\frac{\partial\mathcal L}{\partial E} = \sum_t e_{i_t}^\top\frac{\partial\mathcal L}{\partial x_t}
+$$</p>
+<p>只有这个批次中<strong>出现过的 token 对应的行</strong>会收到梯度，其余行的梯度为 0。这带来两个后果：</p>
+<ul>
+<li>罕见 token 很少被更新，嵌入学得不好（第 1 篇的 glitch token 是极端情况）；</li>
+<li>优化器状态（如 Adam 的一阶、二阶矩）对没出现的行也会因为权重衰减或动量继续变化，这是一些实现对嵌入层使用不同优化设置的原因。</li>
+</ul>
+<h3 id="13-为什么需要稠密的嵌入">1.3 为什么需要稠密的嵌入</h3>
+<p>直接把 one-hot 向量送进网络行不行？有两个问题：</p>
+<ul>
+<li><strong>计算角度</strong>：one-hot 向量的维度是 $V$（几万到几十万），后续每一层的权重都要乘以这个维度，开销无法接受。嵌入把它压到 $d$（几百到几千）维；</li>
+<li><strong>学习角度</strong>：任意两个 one-hot 向量互相正交、距离相同，无法表示词与词之间的语义关系。稠密嵌入可以把相似的 token 放在空间中相近的位置，比如 <code>apple</code> 和 <code>banana</code> 都是水果，它们的向量也会相似。网络在一个 token 上学到的东西可以通过相近的向量泛化到相似的 token 上。</li>
+</ul>
+<p>嵌入是和整个模型一起端到端训练的。早期的 word2vec、GloVe 单独预训练词向量，再交给下游模型；今天的语言模型直接从随机初始化开始，与其他参数一起学习。</p>
+<h3 id="14-尺度为什么原始-transformer-要乘以-33">1.4 尺度：为什么原始 Transformer 要乘以 $\sqrt d$</h3>
+<p>常见的初始化让嵌入矩阵的元素方差约为 $1/d$（例如 $\mathcal N(0, 1/d)$），这样每个嵌入向量的范数约为 1，每个分量约为 $1/\sqrt d$ 的量级。原始 Transformer 接下来要把<strong>正弦位置编码</strong>加上去，而位置编码的每个分量在 $[-1, 1]$ 之间，范数约为 $\sqrt{d/2}$。</p>
+<p>如果直接相加，位置编码的量级比内容嵌入大得多，内容信息会被淹没。乘以 $\sqrt d$ 后，嵌入每个分量回到 $O(1)$ 的量级，与位置编码相当。</p>
+<p>现代模型大多使用 RoPE（作用在注意力内部的 Q、K 上，不加在嵌入上），这个缩放的原始动机就不存在了，所以 Llama 等模型不再乘以 $\sqrt d$。但也有模型保留了这个缩放（例如 Gemma 系列对嵌入乘以 $\sqrt d$），主要是为了配合它们的初始化和归一化方案，让残差流在开始时有合适的尺度。</p>
+<h2 id="2-lm-head">2. LM Head</h2>
+<h3 id="21-定义">2.1 定义</h3>
+<p>最后一层（以及最后的归一化）之后得到隐藏向量 $h_t\in\mathbb R^d$。LM Head 是一个线性层：</p>
+<p>$$
+z_t = W_{\text{out}}h_t,\qquad W_{\text{out}}\in\mathbb R^{V\times d}
+$$</p>
+<p>$z_t\in\mathbb R^V$ 称为 <strong>logits</strong>，第 $i$ 个分量是 token $i$ 的未归一化分数。经过 softmax 得到下一个 token 的分布：</p>
+<p>$$
+p(x_{t+1} = i\mid x_{\le t}) = \frac{\exp(z_{t,i})}{\sum_{j=1}^V\exp(z_{t,j})}
+$$</p>
+<p>现代大模型的 LM Head 通常不带偏置。</p>
+<p><strong>几何解读.</strong> $z_{t,i} = w_i^\top h_t$，其中 $w_i$ 是 $W_{\text{out}}$ 的第 $i$ 行。所以 LM Head 是在问：<strong>隐藏向量 $h_t$ 与每个 token 的"输出向量" $w_i$ 有多对齐？</strong> 对齐得越好，该 token 的概率越高。整个模型的工作，就是把上下文加工成一个指向"正确的下一个 token"的输出向量的方向。</p>
+<h3 id="22-交叉熵损失与它的梯度">2.2 交叉熵损失与它的梯度</h3>
+<p>训练目标是最小化正确 token $y$ 的负对数概率：</p>
+<p>$$
+\mathcal L = -\log p(y\mid x_{\le t}) = -z_y + \log\sum_j\exp(z_j)
+$$</p>
+<p>对 logits 求导：</p>
+<p>$$
+\frac{\partial\mathcal L}{\partial z_i} = -\mathbb 1[i = y] + \frac{\exp(z_i)}{\sum_j\exp(z_j)} = p_i - \mathbb 1[i = y]
+$$</p>
+<p>写成向量：$\nabla_z\mathcal L = p - e_y$，即<strong>预测分布减去 one-hot 目标</strong>。由此可以读出两件事：</p>
+<ul>
+<li>正确 token 的 logit 被往上推（梯度 $p_y - 1&lt;0$），其他所有 token 的 logit 按各自的预测概率被往下压；</li>
+<li>对 $W_{\text{out}}$ 的梯度是 $(p - e_y)h_t^\top$：正确 token 的输出向量 $w_y$ 被拉向 $h_t$，其他 token 的输出向量按概率被推离 $h_t$。</li>
+</ul>
+<p>注意这里与嵌入层的区别：<strong>LM Head 的每一行在每一步都会收到梯度</strong>（只要概率不为 0），梯度是稠密的；嵌入层只有出现的 token 收到梯度。</p>
+<h2 id="3-权重共享weight-tying">3. 权重共享（Weight Tying）</h2>
+<h3 id="31-做法">3.1 做法</h3>
+<p>令</p>
+<p>$$
+W_{\text{out}} = E
+$$</p>
+<p>输入嵌入与 LM Head 使用同一个矩阵。于是 $z_{t,i} = E[i]^\top h_t$：<strong>下一个 token 的分数就是隐藏向量与该 token 的输入嵌入的内积。</strong> 原始 Transformer、GPT-2、T5 等都使用了权重共享（Press &amp; Wolf, 2017; Inan et al., 2017）。</p>
+<h3 id="32-好处">3.2 好处</h3>
+<ul>
+<li><strong>省参数</strong>：少了一个 $V\times d$ 的矩阵。对小模型非常可观（见第 4 节的表）；</li>
+<li><strong>语义空间一致</strong>：同一个 token 的输入表示和输出表示是同一个向量。"语义相近的 token 输入向量相近"这个性质，直接变成"语义相近的 token 在输出时得分也相近"，这是一个合理的归纳偏置；</li>
+<li><strong>罕见 token 学得更好</strong>：1.2 节说过嵌入层的梯度是稀疏的，而 LM Head 的梯度是稠密的。共享之后，每个 token 的向量在每一步都通过输出端得到训练信号，罕见 token 不再只靠自己出现的少数几次被更新。Press &amp; Wolf 的实验中，共享权重在语言建模上降低了困惑度。</li>
+</ul>
+<h3 id="33-代价">3.3 代价</h3>
+<ul>
+<li><strong>两个角色要用同一组向量</strong>：输入嵌入要表达"这个 token 是什么"，输出向量要表达"在什么上下文之后会出现这个 token"。两者相关但不完全相同。例如，一个 token 作为输入时需要携带它自己的语义，作为输出时需要和"预测它的那种上下文表示"对齐。共享强迫二者一致，限制了表达自由度；</li>
+<li><strong>尺度冲突</strong>：输出端希望 logits 有合适的动态范围，输入端希望嵌入与残差流的尺度相匹配。共享时两者的需求要同时满足，这也是一些共享权重的模型对嵌入乘以缩放因子、或对 logits 除以 $\sqrt d$ 的原因。</li>
+</ul>
+<h3 id="34-现代模型怎么选">3.4 现代模型怎么选</h3>
+<p>经验上的趋势是：<strong>小模型多数共享，大模型多数不共享。</strong></p>
+<ul>
+<li>小模型中嵌入参数占比很高（可达三成），共享能省下大量参数，换来的容量可以用在 Transformer 层上；</li>
+<li>大模型中嵌入参数占比很小，省下的参数微不足道，而解除共享带来的表达自由度更有价值。</li>
+</ul>
+<p>例如 GPT-2、Qwen2 的 0.5B 和 1.5B 等小模型共享权重；Llama 2、Llama 3 的 8B 及以上、Qwen2 的 7B 及以上不共享。但这不是绝对规律，Gemma 系列各尺寸都共享。所以不能简单认为某一种做法一定更先进，它取决于模型规模和整体设计。</p>
+<h2 id="4-大词表的代价">4. 大词表的代价</h2>
+<p>第 1 篇提到词表在变大：从 3 万到 15 万甚至 25 万。嵌入层和 LM Head 因此成为显著的成本。</p>
+<h3 id="41-参数量">4.1 参数量</h3>
+<p>嵌入和 LM Head 各有 $Vd$ 个参数。几个例子（按公开配置估算）：</p>
+<table>
+<thead>
+<tr>
+<th>模型</th>
+<th>$V$</th>
+<th>$d$</th>
+<th>是否共享</th>
+<th>嵌入 + LM Head 参数</th>
+<th>占总参数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GPT-2 small</td>
+<td>50257</td>
+<td>768</td>
+<td>共享</td>
+<td>约 39M</td>
+<td>约 31%</td>
+</tr>
+<tr>
+<td>Qwen2-0.5B</td>
+<td>151936</td>
+<td>896</td>
+<td>共享</td>
+<td>约 136M</td>
+<td>约 28%</td>
+</tr>
+<tr>
+<td>Llama 2 7B</td>
+<td>32000</td>
+<td>4096</td>
+<td>不共享</td>
+<td>约 262M</td>
+<td>约 4%</td>
+</tr>
+<tr>
+<td>Llama 3 8B</td>
+<td>128256</td>
+<td>4096</td>
+<td>不共享</td>
+<td>约 1.05B</td>
+<td>约 13%</td>
+</tr>
+</tbody>
+</table>
+<p>Llama 3 把词表从 3.2 万扩到 12.8 万，嵌入相关参数增加了 7 亿多，占比从 4% 升到 13%。</p>
+<h3 id="42-计算量">4.2 计算量</h3>
+<p>嵌入层是查表，几乎没有计算。但 LM Head 是一个真正的矩阵乘法：每个 token 需要约 $2Vd$ 次浮点运算。相对于每个 token 的总前向计算约 $2N_{\text{params}}$（第 0 篇第 6 节），LM Head 的占比约为</p>
+<p>$$
+\frac{2Vd}{2N_{\text{params}}}
+$$</p>
+<p>对 Llama 3 8B 约为 $128256\times 4096/8\times 10^9\approx 6.6\%$。对小模型或大词表模型，这个比例更高。</p>
+<p><strong>MoE 模型中尤其明显.</strong> MoE 模型的总参数很大，但每个 token 只激活一小部分专家（第 25 篇）。而 LM Head 是<strong>稠密</strong>的，每个 token 都要算完整个词表的 logits。所以激活参数少，并不意味着输出层的计算也变成了稀疏计算。在激活参数只有几十亿的 MoE 模型里，LM Head 可能占到每个 token 计算量的相当大一部分。</p>
+<h3 id="43-logits-的显存">4.3 Logits 的显存</h3>
+<p>训练时需要存储所有位置的 logits 来计算损失和梯度，形状是 $[B, L, V]$。例如 $B = 8$、$L = 4096$、$V = 128{,}000$，用 FP32 存储需要</p>
+<p>$$
+8\times 4096\times 128000\times 4\ \text{bytes}\approx 16.8\ \text{GB}
+$$</p>
+<p>这还只是一份，反向传播还要存它的梯度。所以大词表模型的训练框架通常会：</p>
+<ul>
+<li><strong>分块计算交叉熵</strong>：沿序列维度分块，每块算完 logits 和损失后立即释放；</li>
+<li><strong>融合 LM Head 与损失</strong>：把矩阵乘法、softmax 和交叉熵写成一个算子，不把完整的 logits 写回显存。</li>
+</ul>
+<h3 id="44-词表并行">4.4 词表并行</h3>
+<p>在多卡训练和推理中，单张卡可能放不下或算不动完整的 LM Head。<strong>词表并行</strong>（vocabulary parallelism）把 $W_{\text{out}}$ 按词表维度切到 $P$ 张卡上，每张卡负责 $V/P$ 个 token 的 logits。</p>
+<p>难点在 softmax：它需要所有 token 的 logits。做法是：</p>
+<ol>
+<li>每张卡算出自己那部分 logits 的最大值，做一次 all-reduce 取全局最大值（数值稳定）；</li>
+<li>每张卡算 $\sum\exp(z_j - z_{\max})$，再做一次 all-reduce 求和，得到全局归一化常数；</li>
+<li>正确 token 的 logit 只在一张卡上，那张卡负责算损失的那一项。</li>
+</ol>
+<p>这样不需要把完整的 logits 收集到一张卡上，通信量只有几个标量。嵌入层也可以按同样方式切分，每张卡只查自己负责的那部分 id，再求和合并。</p>
+<h2 id="5-输出层的数值稳定">5. 输出层的数值稳定</h2>
+<p>LM Head 的 logits 可能在训练中不断增大，导致 softmax 过于尖锐、数值溢出或训练不稳定。两种常见的处理方式：</p>
+<p><strong>z-loss</strong>（PaLM 使用）。记 softmax 的归一化常数 $Z = \sum_j\exp(z_j)$，加一个辅助损失</p>
+<p>$$
+\mathcal L_z = \lambda\,(\log Z)^2,\qquad \lambda\approx 10^{-4}
+$$</p>
+<p>它鼓励 $\log Z$ 接近 0，也就是让 logits 的整体水平不要漂移得太大。softmax 对 logits 整体加一个常数不变，所以这个约束不改变预测分布本身，只是消除了一个自由度，让数值更稳定。</p>
+<p><strong>Logit soft-capping</strong>（Gemma 2 使用）。用 $\tanh$ 把 logits 平滑地限制在 $[-c, c]$ 内：</p>
+<p>$$
+z\leftarrow c\cdot\tanh(z/c)
+$$</p>
+<p>$|z|$ 远小于 $c$ 时几乎不变，接近 $c$ 时被压住。</p>
+<p>这两种方法和第 23 篇的 QK-Norm 思路相同：注意力的 logits 和输出的 logits 都是"内积过大导致 softmax 饱和"的潜在来源。</p>
+<h2 id="6-lm-head-与-mtp-draft-head-的区别">6. LM Head 与 MTP / Draft Head 的区别</h2>
+<p>近年出现了一些"额外的输出头"，容易和 LM Head 混淆。</p>
+<p><strong>标准 LM Head</strong> 负责预测<strong>下一个</strong> token：</p>
+<p>$$
+h_t\ \longrightarrow\ x_{t+1}
+$$</p>
+<p><strong>MTP</strong>（Multi-Token Prediction，如 DeepSeek-V3）、<strong>Medusa</strong>、<strong>EAGLE</strong> 等方法会额外预测更远的未来 token：</p>
+<p>$$
+h_t\ \longrightarrow\ \hat x_{t+1},\ \hat x_{t+2},\ \dots
+$$</p>
+<p>它们的用途是：</p>
+<ul>
+<li><strong>训练时作为辅助目标</strong>：MTP 让模型在每个位置多预测几个未来 token，增加训练信号的密度，并鼓励隐藏状态对更远的未来做规划；</li>
+<li><strong>推理时提出候选</strong>：在投机解码中，这些头快速给出接下来几个 token 的猜测，再由主模型一次前向验证。</li>
+</ul>
+<p>但它们<strong>不替代</strong>标准 LM Head。最终输出的每个 token 都要经过目标模型的标准 LM Head 验证或生成，额外的头只负责提出候选或提供辅助训练信号。部署时，MTP 模块可以直接丢弃，模型照常工作；也可以保留下来用于投机解码加速。</p>
+<h2 id="7-一个参考实现">7. 一个参考实现</h2>
+<pre><code class="language-python">import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class TokenEmbedding(nn.Module):
+    def __init__(self, vocab_size, d_model, scale=False):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(vocab_size, d_model) / math.sqrt(d_model))
+        self.scale = math.sqrt(d_model) if scale else 1.0   # 原始 Transformer: scale=True
+
+    def forward(self, ids):                                 # ids: (B, L)
+        return F.embedding(ids, self.weight) * self.scale   # 按索引取行: (B, L, d)
+
+
+class LMHead(nn.Module):
+    def __init__(self, vocab_size, d_model, tied_embedding=None):
+        super().__init__()
+        if tied_embedding is not None:
+            self.weight = tied_embedding.weight             # 权重共享：同一个 Parameter
+        else:
+            self.weight = nn.Parameter(torch.randn(vocab_size, d_model) / math.sqrt(d_model))
+
+    def forward(self, h):                                   # h: (B, L, d)
+        return h @ self.weight.T                            # logits: (B, L, V)
+
+
+def lm_loss(logits, targets, z_loss_coef=0.0):
+    &quot;&quot;&quot;标准交叉熵，可选 z-loss&quot;&quot;&quot;
+    logits = logits.float()                                 # 在 FP32 下算 softmax
+    loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1))
+    if z_loss_coef &gt; 0:
+        log_z = torch.logsumexp(logits, dim=-1)             # log Z
+        loss = loss + z_loss_coef * (log_z ** 2).mean()
+    return loss
+
+
+vocab, d = 1000, 64
+embed = TokenEmbedding(vocab, d)
+head = LMHead(vocab, d, tied_embedding=embed)
+assert head.weight is embed.weight                          # 共享：两处是同一个张量
+</code></pre>
+<p>共享权重时，嵌入层和 LM Head 的梯度会累加到同一个参数上：一部分来自输入端（稀疏，只有出现的 token），一部分来自输出端（稠密，所有 token）。</p>
+<h2 id="8-小结">8. 小结</h2>
+<ul>
+<li><strong>嵌入层</strong>是一个以 one-hot 为输入的线性层，实现为查表。它把高维稀疏的 id 压成低维稠密向量，让语义相近的 token 在空间中相近。它的梯度是稀疏的，只有出现的 token 被更新。</li>
+<li><strong>LM Head</strong> 计算隐藏向量与每个 token 的输出向量的内积，得到 logits。交叉熵的梯度是"预测分布减去 one-hot 目标"，所有 token 都收到梯度。</li>
+<li><strong>乘以 $\sqrt d$</strong> 是为了让嵌入与正弦位置编码的量级匹配；使用 RoPE 的模型大多不再需要它。</li>
+<li><strong>权重共享</strong>省参数、让输入输出语义一致、让罕见 token 得到稠密的训练信号；代价是两个角色被迫使用同一组向量。小模型多共享，大模型多不共享。</li>
+<li><strong>大词表</strong>让嵌入和 LM Head 在参数、计算、logits 显存上都成为显著成本；LM Head 在 MoE 模型中也是稠密计算。分块交叉熵、算子融合和词表并行是常见的工程解法。</li>
+<li><strong>z-loss</strong> 和 <strong>logit soft-capping</strong> 控制输出 logits 的数值范围。</li>
+<li><strong>MTP 和 draft head</strong> 预测更远的 token，用于辅助训练或投机解码，但不替代标准 LM Head。</li>
+</ul>
+<p>下一篇进入位置编码：从原始 Transformer 的正弦编码和 BERT、GPT-2 的可学习编码讲起。</p>
+<h2 id="参考文献">参考文献</h2>
+<ul>
+<li>Mikolov et al. <em>Distributed Representations of Words and Phrases and their Compositionality.</em> NeurIPS 2013.</li>
+<li>Press &amp; Wolf. <em>Using the Output Embedding to Improve Language Models.</em> EACL 2017.</li>
+<li>Inan, Khosravi &amp; Socher. <em>Tying Word Vectors and Word Classifiers: A Loss Framework for Language Modeling.</em> ICLR 2017.</li>
+<li>Vaswani et al. <em>Attention Is All You Need.</em> NeurIPS 2017.</li>
+<li>Shoeybi et al. <em>Megatron-LM: Training Multi-Billion Parameter Language Models Using Model Parallelism.</em> 2019.</li>
+<li>Chowdhery et al. <em>PaLM: Scaling Language Modeling with Pathways.</em> 2022.</li>
+<li>Gemma Team. <em>Gemma 2: Improving Open Language Models at a Practical Size.</em> 2024.</li>
+<li>Cai et al. <em>Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads.</em> 2024.</li>
+<li>Li et al. <em>EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty.</em> ICML 2024.</li>
+<li>DeepSeek-AI. <em>DeepSeek-V3 Technical Report.</em> 2024.</li>
+</ul>
+  </article>
+  <footer><a href="../../../#blog">← 返回博客列表</a></footer>
+</div>
+</body>
+</html>
