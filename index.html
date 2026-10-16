@@ -449,7 +449,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">Transformer Architecture</span><span lang="zh">Transformer 架构</span></h3>
-          <span class="series-count"><span lang="en">4 posts</span><span lang="zh">4 篇</span></span></summary>
+          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">Transformer Architecture Foundations: Every Component of the Original Paper</span><span lang="zh">Transformer 架构基础：原始论文的每个部件</span></h4>
@@ -474,6 +474,12 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">Normalization in a Transformer is about controlling scale. This post starts from why scale needs controlling and what a normalization layer does to gradients (scale invariance and its built-in learning-rate effect), then compares BatchNorm, LayerNorm and RMSNorm and explains why language models use the latter two. It analyses where to put the norm: Post-LN versus Pre-LN, why Post-LN needs warmup and why Pre-LN lets the residual stream grow, and the later placements (Sandwich-LN, output norms as in OLMo 2, NormFormer, DeepNorm, ResiDual, Mix-LN). It then covers QK-Norm, why attention logits grow, how it relates to logit soft-capping, and why MLA models use QK-Clip instead, and ends with normalization-free designs such as ReZero and Dynamic Tanh. Key properties are checked with NumPy.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 22 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/transformer/normalization/" aria-label="Normalization: From LayerNorm to RMSNorm, Pre-Norm and QK-Norm"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">FFN and MoE: From ReLU to SwiGLU, From Dense to Sparse Experts</span><span lang="zh">FFN 与 MoE：从 ReLU 到 SwiGLU，从稠密到稀疏专家</span></h4>
+          <p class="entry-sum">The feed-forward network holds two thirds of a Transformer block&#x27;s parameters. This post first looks at what the FFN does (a per-token key-value memory) and how its activation evolved from ReLU and GELU to the gated SwiGLU used by modern models, including why the hidden size becomes 8/3 of the model width. It then turns the FFN into a mixture of experts: top-k routing, total versus activated parameters, capacity and token dropping, and the load-balancing problem with its solutions (the Switch auxiliary loss, router z-loss, and DeepSeek-V3&#x27;s auxiliary-loss-free bias). It covers DeepSeekMoE&#x27;s fine-grained and shared experts, the systems side of expert parallelism, and the newer LatentMoE idea. Routing and balancing are demonstrated with tested NumPy code.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 20 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/transformer/ffn-moe/" aria-label="FFN and MoE: From ReLU to SwiGLU, From Dense to Sparse Experts"></a>
         </article>
         </div>
       </details>
