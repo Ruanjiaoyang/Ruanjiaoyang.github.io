@@ -533,7 +533,7 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
       </details>
       <details class="series">
         <summary><h3 class="series-name"><span lang="en">On-Policy Distillation</span><span lang="zh">On-Policy 蒸馏</span></h3>
-          <span class="series-count"><span lang="en">3 posts</span><span lang="zh">3 篇</span></span></summary>
+          <span class="series-count"><span lang="en">5 posts</span><span lang="zh">5 篇</span></span></summary>
         <div class="entries">
         <article class="entry">
           <h4><span lang="en">On-Policy Distillation (1): Positioning and Theoretical Origins</span><span lang="zh">On-Policy Distillation（一）：定位与理论起源</span></h4>
@@ -552,6 +552,18 @@ footer { color: var(--muted); font-size: 0.82rem; border-top: 1px solid var(--li
           <p class="entry-sum">The third post of the OPD series follows OPD from an academic method into production post-training pipelines, using only what the technical reports themselves state. Gemma 2 runs distillation on the student&#x27;s distribution; Qwen3 trains all of its small models with off-policy then on-policy distillation and reports that OPD beats RL from the same checkpoint at about one tenth of the GPU hours, including on pass@64; the Thinking Machines blog turns OPD into RL with the per-token reverse KL as the advantage and studies cost, LoRA, and recovering behaviors after mid-training. Multi-teacher OPD then becomes the integration layer of the post-training pipeline in MiMo-V2-Flash, GLM-5, DeepSeek-V4 and Nemotron 3 Ultra. A NumPy toy shows the trade-off in one picture: OPD reaches a goal tens of times faster than outcome-reward RL but stops at the teacher&#x27;s level, while RL keeps going.</p>
           <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 15 min | Author: Jiaoyang Ruan</p>
           <a class="entry-link" href="blog/opd/industrial-recipes/" aria-label="On-Policy Distillation (3): Industrial Recipes – From Gemma 2 and Qwen3 to Multi-Teacher OPD"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (4): Why OPD Works and When It Fails</span><span lang="zh">On-Policy Distillation（四）：OPD 为什么有效，什么时候失效</span></h4>
+          <p class="entry-sum">The fourth post of the OPD series groups the 2026 papers that ask why OPD works and how it breaks. The mechanism study from THUNLP shows that successful OPD progressively aligns student and teacher on shared high-probability tokens, and that a teacher helps only when its thinking patterns are compatible and it carries capability the student has not seen; a higher benchmark score is not enough. Many Faces, Demystifying OPD and Revisiting OPD add three families of pathology: estimator and truncation bias (including the unnormalized top-K reverse-KL bug, reproduced here in NumPy), teacher unreliability on student prefixes that grows with depth, and length inflation or exploitation driven by the per-token reward. KAT shows that low KL can mean the teacher is agreeing with a broken prefix. The post closes with a checklist of the conditions under which OPD is expected to work and a frank note on evidence quality.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 16 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/why-it-works-and-fails/" aria-label="On-Policy Distillation (4): Why OPD Works and When It Fails"></a>
+        </article>
+        <article class="entry">
+          <h4><span lang="en">On-Policy Distillation (5): Going Beyond the Teacher, and Combining OPD with RL</span><span lang="zh">On-Policy Distillation（五）：超越 teacher，以及 OPD 与 RL 的结合</span></h4>
+          <p class="entry-sum">The fifth post of the OPD series asks how a student can end up better than its teacher, given that plain OPD converges to the teacher. G-OPD rewrites OPD as KL-regularized RL with an implicit dense reward and adds two knobs, a reward scale and a reference model; scaling the reward beyond one (ExOPD) extrapolates past the teacher, and using the teacher&#x27;s pre-RL model as the reference (reward correction) isolates what RL taught the teacher. Direct-OPD takes that RL-induced shift and applies it to a stronger student, turning a weak teacher into a weak-to-strong signal. The Extrapolation Cliff and REOPD mark the limits of extrapolation, and KDRL, MiMo&#x27;s MOPD and MAD-OPD show the other route of adding outcome rewards or richer teachers. A NumPy toy reproduces the closed-form G-OPD optimum and the Direct-OPD effect.</p>
+          <p class="entry-meta">Date: October 16, 2026 | Estimated Reading Time: 12 min | Author: Jiaoyang Ruan</p>
+          <a class="entry-link" href="blog/opd/beyond-the-teacher/" aria-label="On-Policy Distillation (5): Going Beyond the Teacher, and Combining OPD with RL"></a>
         </article>
         </div>
       </details>
