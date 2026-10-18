@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LLM 强化学习基础：从策略梯度、KL 约束到 RLHF 与 RLVR · Jiaoyang Ruan</title>
-<meta name="description" content="The opening post of the series. It places reinforcement learning in the LLM post-training pipeline (the three-stage InstructGPT recipe), casts text generation as a token-level MDP and as a sequence-level bandit, and derives the policy gradient, REINFORCE, baselines and the advantage function from scratch. It then covers importance sampling and trust regions, the KL-regularized objective and its closed-form optimal policy, the k1/k2/k3 KL estimators and which gradient each one actually gives when used as a loss, and where rewards come from (Bradley-Terry reward models, verifiable rewards, process rewards, LLM judges) together with reward over-optimization. It closes with when RL is worth using instead of SFT or distillation, a map of the PPO, DPO and GRPO lines, and the infrastructure picture. All derivations come with tested NumPy code.">
+<meta name="description" content="The opening post of the series. It places reinforcement learning in the LLM post-training pipeline (the three-stage InstructGPT recipe), casts text…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/rl/rl-foundation/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="LLM 强化学习基础：从策略梯度、KL 约束到 RLHF 与 RLVR">
+<meta property="og:description" content="The opening post of the series. It places reinforcement learning in the LLM post-training pipeline (the three-stage InstructGPT recipe), casts text…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/rl/rl-foundation/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

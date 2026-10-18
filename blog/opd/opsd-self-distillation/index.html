@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>On-Policy Distillation（九）：OPSD，让带着答案的自己当 teacher · Jiaoyang Ruan</title>
-<meta name="description" content="The last post of the OPD series covers on-policy self-distillation (OPSD): the teacher is the same model given privileged context, such as a reference solution, environment feedback, a demonstration or a cleaner sub-context. It traces the branch from context distillation (Askell 2021, Snell 2022) through OPCD, then reads the 2026 core papers closely: OPSD (whose v1-to-v3 revision changed the recipe and the headline numbers), SDPO, SDFT (with its forward-KL erratum) and pi-Distill. The second half collects the evidence that the privileged teacher leaks style as well as knowledge: style tokens dominating the KL, suppressed uncertainty, collapsing diversity, and OP2SD&#x27;s finding that another problem&#x27;s solution works as well as the right one. It ends with criteria for when the information asymmetry is reasonable. A toy script reproduces the &quot;rich get richer&quot; tilt that self-distillation applies to two equally correct answers.">
+<meta name="description" content="The last post of the OPD series covers on-policy self-distillation (OPSD): the teacher is the same model given privileged context, such as a reference…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/opd/opsd-self-distillation/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="On-Policy Distillation（九）：OPSD，让带着答案的自己当 teacher">
+<meta property="og:description" content="The last post of the OPD series covers on-policy self-distillation (OPSD): the teacher is the same model given privileged context, such as a reference…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/opd/opsd-self-distillation/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

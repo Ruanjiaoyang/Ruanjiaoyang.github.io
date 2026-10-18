@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Guidance：让扩散模型听指令 · Jiaoyang Ruan</title>
-<meta name="description" content="Conditional generation needs the score of p(x|y). Bayes&#x27; rule splits it into an unconditional score plus a classifier gradient. This post derives classifier guidance both from the discrete DDPM step (a Taylor expansion that shifts the Gaussian mean) and from the score view, explains the guidance scale as sampling from a sharpened distribution, and then derives classifier-free guidance, its training with condition dropout, the fidelity–diversity trade-off, and practical fixes such as dynamic thresholding, CFG rescale, guidance intervals and negative prompts. It ends with how text-to-image systems use CFG and the link between guidance and KL-regularized RL.">
+<meta name="description" content="Conditional generation needs the score of p(x|y). Bayes&#x27; rule splits it into an unconditional score plus a classifier gradient. This post derives classifier…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/generative-models/guidance/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="Guidance：让扩散模型听指令">
+<meta property="og:description" content="Conditional generation needs the score of p(x|y). Bayes&#x27; rule splits it into an unconditional score plus a classifier gradient. This post derives classifier…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/generative-models/guidance/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

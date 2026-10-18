@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>DDPM：一步步加噪，再一步步去噪 · Jiaoyang Ruan</title>
-<meta name="description" content="DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the closed-form marginal q(x_t|x_0), the tractable posterior q(x_{t-1}|x_t,x_0) by completing the square, the full variational bound and its decomposition into L_T, L_{t-1} and L_0, and how the Gaussian KL terms collapse to the simple noise-prediction loss. It then covers the training and sampling algorithms, the choice of reverse variance, noise schedules, network architecture, and the epsilon, x_0 and v parameterizations.">
+<meta name="description" content="DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/generative-models/ddpm/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="DDPM：一步步加噪，再一步步去噪">
+<meta property="og:description" content="DDPM defines a fixed Markov chain that gradually turns data into Gaussian noise and trains a network to reverse it. This post derives, step by step, the…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/generative-models/ddpm/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

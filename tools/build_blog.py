@@ -21,6 +21,7 @@ CONTENT = ROOT / "content"
 OUT = ROOT / "blog"
 INDEX = ROOT / "index.html"
 START, END = "<!-- BLOG:START -->", "<!-- BLOG:END -->"
+SITE = "https://ruanjiaoyang.github.io/"
 
 # Series shown on the Blog list, in this order: folder name -> (English name, Chinese name).
 # A folder not listed here still publishes, after these, under its front-matter series name.
@@ -111,14 +112,17 @@ def meta_line(p):
 def page(p, body_html, toc_html):
     title = html.escape(str(p.get("title", p["slug"])))
     title_en = html.escape(str(p.get("title_en", "")))
-    desc = html.escape(" ".join(str(p.get("summary_en", "")).split()))
+    desc = " ".join(str(p.get("summary_en", "")).split())
+    if len(desc) > 160:  # search engines show ~160 characters; cut at a word boundary
+        desc = desc[:157].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+    desc = html.escape(desc)
     tags = "".join(f'<span class="tag">{html.escape(str(t))}</span>' for t in p.get("tags", []))
     series = html.escape(str(p.get("series", "")))
     order = p.get("order")
     kicker = (f"{series} · 系列导读" if order == 0 else f"{series} · 第 {order} 篇") if series and order is not None else series
     toc_block = (f'<details class="toc"><summary>目录 · Table of Contents</summary>{toc_html}</details>'
                  if "<li>" in toc_html else "")
-    fields = dict(title=title, title_en=title_en, desc=desc, tags=tags, kicker=kicker,
+    fields = dict(url=SITE + p["url"], title=title, title_en=title_en, desc=desc, tags=tags, kicker=kicker,
                   date=str(p.get("date", "")), toc=toc_block, body=body_html)
     out = TEMPLATE
     for k, v in fields.items():
@@ -177,6 +181,11 @@ def main():
     i, j = s.index(START) + len(START), s.index(END)
     INDEX.write_text(s[:i] + "\n      " + blog_list(posts) + "\n      " + s[j:], encoding="utf-8")
     print("updated index.html blog list:", len(posts), "post(s)")
+    urls = [(SITE, None)] + [(SITE + p["url"], p.get("date")) for p in posts]
+    (ROOT / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "".join(f"  <url><loc>{u}</loc>" + (f"<lastmod>{d}</lastmod>" if d else "") + "</url>\n" for u, d in urls)
+        + "</urlset>\n", encoding="utf-8")
 
 
 TEMPLATE = (Path(__file__).parent / "post_template.html").read_text(encoding="utf-8")

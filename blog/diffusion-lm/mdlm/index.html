@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MDLM 与 MD4：掩码扩散就是加权的掩码语言模型 · Jiaoyang Ruan</title>
-<meta name="description" content="MDLM and MD4 show that plain absorbing-state (masked) diffusion, with the right parameterization and a continuous-time objective, is far stronger than earlier results suggested. This post derives the interpolating forward process and its posterior, the SUBS parameterization (zero masking probability and carry-over unmasking), the Rao-Blackwellized discrete-time bound and its continuous-time limit, which is a weighted average of masked-language-modeling losses and is invariant to the noise schedule. It proves that SEDD&#x27;s absorbing loss reduces to exactly the same objective, then covers efficient ancestral sampling with caching, semi-autoregressive generation, and MD4&#x27;s generalized state-dependent schedules.">
+<meta name="description" content="MDLM and MD4 show that plain absorbing-state (masked) diffusion, with the right parameterization and a continuous-time objective, is far stronger than…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/diffusion-lm/mdlm/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="MDLM 与 MD4：掩码扩散就是加权的掩码语言模型">
+<meta property="og:description" content="MDLM and MD4 show that plain absorbing-state (masked) diffusion, with the right parameterization and a continuous-time objective, is far stronger than…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/diffusion-lm/mdlm/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

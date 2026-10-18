@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>On-Policy Distillation（五）：超越 teacher，以及 OPD 与 RL 的结合 · Jiaoyang Ruan</title>
-<meta name="description" content="The fifth post of the OPD series asks how a student can end up better than its teacher, given that plain OPD converges to the teacher. G-OPD rewrites OPD as KL-regularized RL with an implicit dense reward and adds two knobs, a reward scale and a reference model; scaling the reward beyond one (ExOPD) extrapolates past the teacher, and using the teacher&#x27;s pre-RL model as the reference (reward correction) isolates what RL taught the teacher. Direct-OPD takes that RL-induced shift and applies it to a stronger student, turning a weak teacher into a weak-to-strong signal. The Extrapolation Cliff and REOPD mark the limits of extrapolation, and KDRL, MiMo&#x27;s MOPD and MAD-OPD show the other route of adding outcome rewards or richer teachers. A NumPy toy reproduces the closed-form G-OPD optimum and the Direct-OPD effect.">
+<meta name="description" content="The fifth post of the OPD series asks how a student can end up better than its teacher, given that plain OPD converges to the teacher. G-OPD rewrites OPD as…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/opd/beyond-the-teacher/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="On-Policy Distillation（五）：超越 teacher，以及 OPD 与 RL 的结合">
+<meta property="og:description" content="The fifth post of the OPD series asks how a student can end up better than its teacher, given that plain OPD converges to the teacher. G-OPD rewrites OPD as…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/opd/beyond-the-teacher/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

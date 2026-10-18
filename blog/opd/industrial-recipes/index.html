@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>On-Policy Distillation（三）：工业配方，从 Gemma 2、Qwen3 到多教师 OPD · Jiaoyang Ruan</title>
-<meta name="description" content="The third post of the OPD series follows OPD from an academic method into production post-training pipelines, using only what the technical reports themselves state. Gemma 2 runs distillation on the student&#x27;s distribution; Qwen3 trains all of its small models with off-policy then on-policy distillation and reports that OPD beats RL from the same checkpoint at about one tenth of the GPU hours, including on pass@64; the Thinking Machines blog turns OPD into RL with the per-token reverse KL as the advantage and studies cost, LoRA, and recovering behaviors after mid-training. Multi-teacher OPD then becomes the integration layer of the post-training pipeline in MiMo-V2-Flash, GLM-5, DeepSeek-V4 and Nemotron 3 Ultra. A NumPy toy shows the trade-off in one picture: OPD reaches a goal tens of times faster than outcome-reward RL but stops at the teacher&#x27;s level, while RL keeps going.">
+<meta name="description" content="The third post of the OPD series follows OPD from an academic method into production post-training pipelines, using only what the technical reports…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/opd/industrial-recipes/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="On-Policy Distillation（三）：工业配方，从 Gemma 2、Qwen3 到多教师 OPD">
+<meta property="og:description" content="The third post of the OPD series follows OPD from an academic method into production post-training pipelines, using only what the technical reports…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/opd/industrial-recipes/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

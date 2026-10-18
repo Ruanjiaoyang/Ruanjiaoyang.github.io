@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>位置编码：从正弦函数到 RoPE 与 NoPE · Jiaoyang Ruan</title>
-<meta name="description" content="Self-attention is permutation-equivariant, so every Transformer must inject position somehow. This post covers the whole family in one place: sinusoidal and learned absolute encodings and the four-term expansion that exposes their weakness; relative schemes from Shaw et al. and Transformer-XL to the T5 bucketed bias and ALiBi; RoPE, derived from the requirement that rotated queries and keys have a relative-only dot product; context extension by position interpolation, NTK-aware base scaling, YaRN and Dual Chunk Attention; and finally Partial RoPE, the decoupled RoPE used by MLA, and NoPE layers in hybrid designs.">
+<meta name="description" content="Self-attention is permutation-equivariant, so every Transformer must inject position somehow. This post covers the whole family in one place: sinusoidal and…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/transformer/position-encoding/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="位置编码：从正弦函数到 RoPE 与 NoPE">
+<meta property="og:description" content="Self-attention is permutation-equivariant, so every Transformer must inject position somehow. This post covers the whole family in one place: sinusoidal and…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/transformer/position-encoding/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

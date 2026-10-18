@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>FFN 与 MoE：从 ReLU 到 SwiGLU，从稠密到稀疏专家 · Jiaoyang Ruan</title>
-<meta name="description" content="The feed-forward network holds two thirds of a Transformer block&#x27;s parameters. This post first looks at what the FFN does (a per-token key-value memory) and how its activation evolved from ReLU and GELU to the gated SwiGLU used by modern models, including why the hidden size becomes 8/3 of the model width. It then turns the FFN into a mixture of experts: top-k routing, total versus activated parameters, capacity and token dropping, and the load-balancing problem with its solutions (the Switch auxiliary loss, router z-loss, and DeepSeek-V3&#x27;s auxiliary-loss-free bias). It covers DeepSeekMoE&#x27;s fine-grained and shared experts, the systems side of expert parallelism, and the newer LatentMoE idea. Routing and balancing are demonstrated with tested NumPy code.">
+<meta name="description" content="The feed-forward network holds two thirds of a Transformer block&#x27;s parameters. This post first looks at what the FFN does (a per-token key-value memory) and…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/transformer/ffn-moe/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="FFN 与 MoE：从 ReLU 到 SwiGLU，从稠密到稀疏专家">
+<meta property="og:description" content="The feed-forward network holds two thirds of a Transformer block&#x27;s parameters. This post first looks at what the FFN does (a per-token key-value memory) and…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/transformer/ffn-moe/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">

@@ -4,7 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>D3PM：把扩散模型搬到离散状态空间 · Jiaoyang Ruan</title>
-<meta name="description" content="Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the forward marginal and the closed-form posterior, compares uniform, absorbing ([MASK]), discretized Gaussian and embedding-based transition matrices, explains the noise schedules, the x_0-parameterization of the reverse process and the hybrid loss, and shows that BERT, autoregressive language models and generative masked language models are all special cases of discrete diffusion.">
+<meta name="description" content="Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the…">
+<link rel="canonical" href="https://ruanjiaoyang.github.io/blog/diffusion-lm/d3pm/">
+<link rel="icon" href="../../../favicon.svg" type="image/svg+xml">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Jiaoyang Ruan">
+<meta property="og:title" content="D3PM：把扩散模型搬到离散状态空间">
+<meta property="og:description" content="Gaussian noise does not make sense for tokens, so D3PM replaces it with a Markov transition matrix acting on categorical variables. This post derives the…">
+<meta property="og:url" content="https://ruanjiaoyang.github.io/blog/diffusion-lm/d3pm/">
+<meta property="og:image" content="https://ruanjiaoyang.github.io/avatar.jpg">
+<meta property="article:author" content="Jiaoyang Ruan">
+<meta property="article:published_time" content="2026-10-16">
+<meta name="twitter:card" content="summary">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
